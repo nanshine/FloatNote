@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   buildBindings,
+  resolveFontSizeShortcut,
   resolveEsc,
   resolveBoundCombo,
   viewTargetFor,
@@ -17,6 +18,32 @@ describe("buildBindings + resolveBoundCombo", () => {
   it("未命中返回 null", () => {
     expect(resolveBoundCombo("Cmd+Z", bindings)).toBeNull();
     expect(resolveBoundCombo(null, bindings)).toBeNull();
+  });
+});
+
+describe("resolveFontSizeShortcut", () => {
+  function event(key: string, overrides: Partial<KeyboardEvent> = {}): KeyboardEvent {
+    return { key, metaKey: true, ctrlKey: false, altKey: false, ...overrides } as KeyboardEvent;
+  }
+
+  it("recognizes both keyboard forms of increase", () => {
+    expect(resolveFontSizeShortcut(event("="))).toBe("increase");
+    expect(resolveFontSizeShortcut(event("+", { shiftKey: true }))).toBe("increase");
+  });
+
+  it("recognizes decrease and reset", () => {
+    expect(resolveFontSizeShortcut(event("-"))).toBe("decrease");
+    expect(resolveFontSizeShortcut(event("0"))).toBe("reset");
+  });
+
+  it("supports Ctrl on non-macOS keyboards", () => {
+    expect(resolveFontSizeShortcut(event("-", { metaKey: false, ctrlKey: true }))).toBe("decrease");
+  });
+
+  it("ignores unrelated or modified combinations", () => {
+    expect(resolveFontSizeShortcut(event("j"))).toBeNull();
+    expect(resolveFontSizeShortcut(event("-", { altKey: true }))).toBeNull();
+    expect(resolveFontSizeShortcut(event("-", { metaKey: false }))).toBeNull();
   });
 });
 

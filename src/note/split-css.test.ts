@@ -44,6 +44,9 @@ describe("split view CSS placement", () => {
 
   it("aligns the writing title with editor content and leaves selection rendering to CodeMirror", () => {
     expect(css).toMatch(/#piece-doc-header\s*{[^}]*padding-left:\s*var\(--piece-content-inset\);/s);
+    expect(css).toMatch(
+      /\.piece-title-input\s*{[^}]*font-size:\s*calc\(var\(--editor-font,\s*15px\)\s*\+\s*11px\);/s,
+    );
     expect(editorSource).toContain('padding: "16px var(--piece-content-inset, 0px)"');
     expect(editorSource).toContain("drawSelection({ cursorBlinkRate: 1200 })");
     expect(css).not.toContain(".cm-selected-line-break");

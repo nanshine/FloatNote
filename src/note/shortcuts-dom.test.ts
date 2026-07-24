@@ -10,6 +10,7 @@ function actions(): ShortcutActions {
     collapseAssistantBubble: vi.fn(), isHistoryPopoverOpen: () => false, closeHistoryPopover: vi.fn(),
     isPermissionBubbleOpen: () => false, closePermissionBubble: vi.fn(), isSkillMenuOpen: () => false,
     closeSkillMenu: vi.fn(), isMentionMenuOpen: () => false, closeMentionMenu: vi.fn(), canSplit: () => false,
+    increaseEditorFontSize: vi.fn(), decreaseEditorFontSize: vi.fn(), resetEditorFontSize: vi.fn(),
   };
 }
 
@@ -26,6 +27,38 @@ describe("window shortcuts", () => {
     input.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
 
     expect(shortcutActions.closeActionPanel).not.toHaveBeenCalled();
+    remove();
+  });
+
+  it("handles fixed editor font-size shortcuts before configurable bindings", () => {
+    const shortcutActions = actions();
+    const remove = installShortcuts(shortcutActions, { map: new Map() });
+
+    const increase = new KeyboardEvent("keydown", {
+      key: "=",
+      metaKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    document.dispatchEvent(increase);
+    expect(increase.defaultPrevented).toBe(true);
+    expect(shortcutActions.increaseEditorFontSize).toHaveBeenCalledOnce();
+
+    document.dispatchEvent(new KeyboardEvent("keydown", {
+      key: "-",
+      ctrlKey: true,
+      bubbles: true,
+      cancelable: true,
+    }));
+    expect(shortcutActions.decreaseEditorFontSize).toHaveBeenCalledOnce();
+
+    document.dispatchEvent(new KeyboardEvent("keydown", {
+      key: "0",
+      metaKey: true,
+      bubbles: true,
+      cancelable: true,
+    }));
+    expect(shortcutActions.resetEditorFontSize).toHaveBeenCalledOnce();
     remove();
   });
 });

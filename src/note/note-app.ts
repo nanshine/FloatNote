@@ -100,9 +100,15 @@ import { createProjectMenuRenderer, fileManagerRevealLabel } from "./project-men
 import { createAssistantController } from "./assistant-controller";
 import { createNoteSession } from "./note-session";
 import { resolveAgentWriteNavigation } from "./agent-write-navigation";
+import {
+  adjustEditorFontSize,
+  initializeEditorFontSize,
+  resetEditorFontSize,
+} from "./font-size";
 
 
 export function startNoteApp() {
+initializeEditorFontSize();
 const app = document.querySelector<HTMLElement>("#app")!;
 app.innerHTML = `
   <div id="titlebar-root"></div>
@@ -1446,6 +1452,27 @@ async function init() {
     },
     toggleActionPanel: () => tasksPanel.toggle(),
     quickAddAction: () => tasksPanel.quickAdd(),
+    increaseEditorFontSize: () => {
+      const size = adjustEditorFontSize(1);
+      requestEditorLayout(editor);
+      requestEditorLayout(pieceEditor);
+      pieceHeader?.refit();
+      showToast(`笔记字号 ${size}px`);
+    },
+    decreaseEditorFontSize: () => {
+      const size = adjustEditorFontSize(-1);
+      requestEditorLayout(editor);
+      requestEditorLayout(pieceEditor);
+      pieceHeader?.refit();
+      showToast(`笔记字号 ${size}px`);
+    },
+    resetEditorFontSize: () => {
+      const size = resetEditorFontSize();
+      requestEditorLayout(editor);
+      requestEditorLayout(pieceEditor);
+      pieceHeader?.refit();
+      showToast(`笔记字号 ${size}px`);
+    },
     selectView: (v) => selectView(v),
     startNewConversation: async () => {
       const cur = await invoke<{ open: boolean }>("get_assistant_state");

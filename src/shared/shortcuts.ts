@@ -114,6 +114,7 @@ function keyName(key: string): string {
     case "Alt": return "Alt";
     case "Shift": return "Shift";
     case " ": return "Space";
+    case "+": return "=";
     default: return key.length === 1 ? key.toUpperCase() : key;
   }
 }
@@ -173,6 +174,11 @@ const RAW_RESERVED: ReservedEntry[] = [
   { combo: "Mod+/", reason: "与编辑器「注释」相同，无法使用" },
   { combo: "Mod+Enter", reason: "该组合键已被编辑器占用" },
   { combo: "Shift+Mod+K", reason: "该组合键已被编辑器占用" },
+  // 主笔记编辑器字号
+  { combo: "Mod+=", reason: "与编辑器「增大字号」相同，无法使用" },
+  { combo: "Shift+Mod+=", reason: "与编辑器「增大字号」相同，无法使用" },
+  { combo: "Mod+-", reason: "与编辑器「减小字号」相同，无法使用" },
+  { combo: "Mod+0", reason: "与编辑器「重置字号」相同，无法使用" },
   // 系统/平台保留
   { combo: "Mod+Q", reason: "与系统「退出应用」相同，无法使用" },
   { combo: "Mod+W", reason: "与系统「关闭窗口」相同，无法使用" },

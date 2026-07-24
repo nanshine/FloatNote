@@ -87,6 +87,19 @@ export interface ShortcutActions {
   isMentionMenuOpen(): boolean;
   closeMentionMenu(): void;
   canSplit(): boolean;
+  increaseEditorFontSize(): void;
+  decreaseEditorFontSize(): void;
+  resetEditorFontSize(): void;
+}
+
+export type FontSizeShortcut = "increase" | "decrease" | "reset";
+
+export function resolveFontSizeShortcut(e: KeyboardEvent): FontSizeShortcut | null {
+  if ((!e.metaKey && !e.ctrlKey) || e.altKey) return null;
+  if (e.key === "=" || e.key === "+") return "increase";
+  if (e.key === "-") return "decrease";
+  if (e.key === "0") return "reset";
+  return null;
 }
 
 function isFocusInAssistant(): boolean {
@@ -141,6 +154,14 @@ export function installShortcuts(actions: ShortcutActions, bindings: Bindings): 
       return;
     }
     if (!e.metaKey && !e.ctrlKey) return;
+    const fontSizeAction = resolveFontSizeShortcut(e);
+    if (fontSizeAction) {
+      e.preventDefault();
+      if (fontSizeAction === "increase") actions.increaseEditorFontSize();
+      else if (fontSizeAction === "decrease") actions.decreaseEditorFontSize();
+      else actions.resetEditorFontSize();
+      return;
+    }
     const id = resolveBoundCombo(eventToCombo(e), bindings);
     if (id) {
       e.preventDefault();

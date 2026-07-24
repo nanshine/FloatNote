@@ -493,6 +493,7 @@ export function createPieceHeader(args: {
   return {
     setLabel,
     focusTitle,
+    refit: fit,
     closeMenu,
     closeVersionMenu,
     exitVersionPreview: closePreview,

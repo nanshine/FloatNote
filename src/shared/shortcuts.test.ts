@@ -27,6 +27,9 @@ describe("eventToCombo", () => {
     expect(canonicalize(eventToCombo(fakeKey("k", { meta: true, shift: true }))!)).toBe("Shift+Mod+K");
     expect(canonicalize(eventToCombo(fakeKey("1", { meta: true }))!)).toBe("Mod+1");
   });
+  it("将 Shift 输入的实体加号归一到等号键", () => {
+    expect(eventToCombo(fakeKey("+", { meta: true, shift: true }))).toBe("Shift+Cmd+=");
+  });
 });
 
 describe("canonicalize", () => {
@@ -62,9 +65,12 @@ describe("checkConflict", () => {
     expect(r?.kind).toBe("reserved");
     expect(r?.message).toContain("关闭窗口");
   });
-  it("不再为已移除的字号控制保留 Mod+=", () => {
-    const r = checkConflict({ combo: "Cmd+=", id: "assistant", all: all(), globals });
-    expect(r).toBeNull();
+  it("保留编辑器字号快捷键", () => {
+    for (const combo of ["Cmd+=", "Cmd+-", "Cmd+0"]) {
+      const r = checkConflict({ combo, id: "assistant", all: all(), globals });
+      expect(r?.kind).toBe("reserved");
+      expect(r?.message).toContain("字号");
+    }
   });
   it("保留键：Shift+Mod+K（CM 占用）", () => {
     const r = checkConflict({ combo: "Cmd+Shift+K", id: "assistant", all: all(), globals });

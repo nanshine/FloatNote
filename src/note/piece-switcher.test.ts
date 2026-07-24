@@ -13,6 +13,37 @@ beforeEach(() => {
 });
 
 describe("version menu", () => {
+  it("can refit a wrapped title after its font size changes", () => {
+    const topbarMount = document.createElement("div");
+    const titleMount = document.createElement("div");
+    const previewMount = document.createElement("div");
+    document.body.append(topbarMount, titleMount, previewMount);
+    const header = createPieceHeader({
+      topbarMount,
+      titleMount,
+      previewMount,
+      host: {
+        dir: () => "/project",
+        current: () => ({ name: "piece", path: "/project/piece.md" }),
+        open: vi.fn(),
+        loadVersions: async () => [],
+        snapshot: vi.fn(),
+        preview: vi.fn().mockResolvedValue(false),
+        exitPreview: vi.fn(),
+        restore: vi.fn(),
+        renameVersion: vi.fn(),
+        deleteVersion: vi.fn(),
+        focusBody: vi.fn(),
+      },
+    });
+    const title = titleMount.querySelector<HTMLTextAreaElement>(".piece-title-input")!;
+    Object.defineProperty(title, "scrollHeight", { configurable: true, value: 72 });
+
+    header.refit();
+
+    expect(title.style.height).toBe("72px");
+  });
+
   it("reopens immediately after an outside click closes it", async () => {
     const topbarMount = document.createElement("div");
     const titleMount = document.createElement("div");

@@ -12,6 +12,9 @@ FloatNote 使用 Vite 多页面应用：根目录 HTML 是各 WebView 入口。`
   figure widget，并以精确源码偏移定位工具栏写回。Tab/Shift+Tab 对多行及完整
   列表子树操作。完整公式在光标位于别处时显示为 KaTeX widget；点击或让选区触碰
   公式区间会恢复原始 Markdown 源码，未闭合公式始终保持源码。
+  `font-size.ts` 通过 `--editor-font` 联动 Inbox、Piece 编辑器与写作标题字号，并用
+  `localStorage` 保存 12–24px 的窗口本地偏好；Cmd/Ctrl `+`、`-`、`0` 分别增大、
+  减小和重置为 15px，不使用 WebView 整页缩放。
   Inbox 的 CodeMirror 文档只包含 clean Markdown；`annotations/state.ts` 的
   `StateField` 持有标签、文本区间和 quote 来源位置，`autosave.ts` 在正文或
   metadata 变化后编码 v2 磁盘快照。右键菜单只作用于 Lezer 识别的可见正文，
