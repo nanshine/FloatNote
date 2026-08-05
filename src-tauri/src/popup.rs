@@ -364,11 +364,14 @@ fn run_popup_capture_with_origin(
     }
 
     let captured = crate::capture::capture_current_selection();
+    #[cfg(target_os = "macos")]
     if selection_event
         .is_some_and(|event| !crate::selection_monitor::is_current_selection_event(event))
     {
         return;
     }
+    #[cfg(not(target_os = "macos"))]
+    let _ = selection_event;
     let has_text = captured.is_some();
     if !should_emit(
         origin,

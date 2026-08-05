@@ -85,8 +85,8 @@ pub fn run_capture(app: &AppHandle) {
 
 /// macOS Accessibility trust check. Returns true if capture may proceed.
 /// On macOS, if untrusted, prompts once and emits `accessibility-needed` to
-/// the `main` window; returns false. On non-macOS, returns true (the actual
-/// capture stub will fail later with a clear error).
+/// the `main` window; returns false. Windows uses the clipboard path below and
+/// needs no separate accessibility permission.
 pub fn check_accessibility(app: &AppHandle) -> bool {
     #[cfg(target_os = "macos")]
     {
@@ -279,8 +279,124 @@ pub fn capture_current_selection() -> Option<CurrentSelection> {
     }
     #[cfg(target_os = "macos")]
     return pasteboard::copy_selection(pid);
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(target_os = "windows")]
+    return windows_capture::copy_selection(pid);
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     None
+}
+
+#[cfg(target_os = "windows")]
+mod windows_capture {
+    use super::*;
+    use std::{mem::size_of, thread, time::Duration};
+    use windows_sys::Win32::{
+        System::{
+            DataExchange::{CloseClipboard, EmptyClipboard, GetClipboardData, OpenClipboard, SetClipboardData},
+            Memory::{GlobalAlloc, GlobalLock, GlobalSize, GlobalUnlock, GMEM_MOVEABLE},
+        },
+        UI::{
+            Input::KeyboardAndMouse::{SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_KEYUP, VK_C, VK_CONTROL},
+            WindowsAndMessaging::GetForegroundWindow,
+        },
+    };
+
+    const CF_UNICODETEXT: u32 = 13;
+
+    fn with_clipboard<T>(f: impl FnOnce() -> T) -> Option<T> {
+        for _ in 0..12 {
+            if unsafe { OpenClipboard(std::ptr::null_mut()) } != 0 {
+                let value = f();
+                unsafe { CloseClipboard() };
+                return Some(value);
+            }
+            thread::sleep(Duration::from_millis(10));
+        }
+        None
+    }
+
+    fn read_text() -> Option<Vec<u16>> {
+        let handle = unsafe { GetClipboardData(CF_UNICODETEXT) };
+        if handle.is_null() {
+            return None;
+        }
+        let ptr = unsafe { GlobalLock(handle) } as *const u16;
+        if ptr.is_null() {
+            return None;
+        }
+        let capacity = unsafe { GlobalSize(handle) } / size_of::<u16>();
+        let mut length = 0;
+        while length < capacity && unsafe { *ptr.add(length) } != 0 {
+            length += 1;
+        }
+        let text = unsafe { std::slice::from_raw_parts(ptr, length).to_vec() };
+        unsafe { GlobalUnlock(handle) };
+        Some(text)
+    }
+
+    fn write_text(text: Option<&[u16]>) {
+        unsafe { EmptyClipboard() };
+        let Some(text) = text else { return };
+        let bytes = (text.len() + 1) * size_of::<u16>();
+        let handle = unsafe { GlobalAlloc(GMEM_MOVEABLE, bytes) };
+        if handle.is_null() {
+            return;
+        }
+        let ptr = unsafe { GlobalLock(handle) } as *mut u16;
+        if ptr.is_null() {
+            return;
+        }
+        unsafe {
+            std::ptr::copy_nonoverlapping(text.as_ptr(), ptr, text.len());
+            *ptr.add(text.len()) = 0;
+            GlobalUnlock(handle);
+            let _ = SetClipboardData(CF_UNICODETEXT, handle);
+        }
+    }
+
+    fn send_copy() -> bool {
+        let key = |vk| INPUT {
+            r#type: INPUT_KEYBOARD,
+            Anonymous: INPUT_0 {
+                ki: KEYBDINPUT { wVk: vk, ..Default::default() },
+            },
+        };
+        let release = |vk| INPUT {
+            r#type: INPUT_KEYBOARD,
+            Anonymous: INPUT_0 {
+                ki: KEYBDINPUT { wVk: vk, dwFlags: KEYEVENTF_KEYUP, ..Default::default() },
+            },
+        };
+        let inputs = [key(VK_CONTROL), key(VK_C), release(VK_C), release(VK_CONTROL)];
+        unsafe {
+            SendInput(inputs.len() as u32, inputs.as_ptr(), size_of::<INPUT>() as i32)
+                == inputs.len() as u32
+        }
+    }
+
+    pub fn copy_selection(pid: i32) -> Option<CurrentSelection> {
+        if crate::source::frontmost_pid() != Some(pid)
+            || unsafe { GetForegroundWindow() }.is_null()
+        {
+            return None;
+        }
+        let saved = with_clipboard(read_text)?;
+        if !send_copy() {
+            let _ = with_clipboard(|| write_text(saved.as_deref()));
+            return None;
+        }
+        thread::sleep(Duration::from_millis(80));
+        let copied = with_clipboard(read_text).flatten().filter(|text| !text.is_empty());
+        let _ = with_clipboard(|| write_text(saved.as_deref()));
+        let text = copied?;
+        let text = String::from_utf16_lossy(&text).trim().to_string();
+        (!text.is_empty()).then_some(CurrentSelection {
+            text,
+            html: None,
+            source_pid: pid,
+            anchor: None,
+            method: SelectionMethod::Clipboard,
+        })
+    }
 }
 
 #[cfg(test)]

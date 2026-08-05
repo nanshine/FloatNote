@@ -13,6 +13,10 @@ use std::sync::atomic::{AtomicPtr, AtomicU64, Ordering};
 use std::sync::{mpsc, Mutex};
 #[cfg(target_os = "macos")]
 use std::thread::JoinHandle;
+#[cfg(target_os = "windows")]
+use std::sync::OnceLock;
+#[cfg(target_os = "windows")]
+use windows_sys::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_LBUTTON};
 use tauri::{AppHandle, Manager};
 
 use crate::selection_intent::Point;
@@ -169,6 +173,8 @@ static MONITOR: Mutex<Option<MonitorRuntime>> = Mutex::new(None);
 
 #[cfg(target_os = "macos")]
 static LATEST_SELECTION_EVENT: AtomicU64 = AtomicU64::new(0);
+#[cfg(target_os = "windows")]
+static WINDOWS_MONITOR: OnceLock<()> = OnceLock::new();
 
 fn auto_mode_enabled(app: &AppHandle) -> bool {
     app.try_state::<crate::state::AppState>()
@@ -349,7 +355,41 @@ pub fn install(app: AppHandle) {
         }
     }
     #[cfg(not(target_os = "macos"))]
-    let _ = app;
+    {
+        #[cfg(target_os = "windows")]
+        {
+            if WINDOWS_MONITOR.set(()).is_err() {
+                return;
+            }
+            std::thread::spawn(move || {
+                let mut was_down = false;
+                let mut source_pid = None;
+                loop {
+                    let is_down = unsafe { GetAsyncKeyState(VK_LBUTTON as i32) } < 0;
+                    if is_down && !was_down {
+                        source_pid = crate::capture::external_frontmost_pid();
+                    } else if !is_down && was_down {
+                        if let Some(pid) = source_pid.take() {
+                            if auto_mode_enabled(&app)
+                                && crate::source::frontmost_pid() == Some(pid)
+                            {
+                                std::thread::sleep(std::time::Duration::from_millis(70));
+                                if auto_mode_enabled(&app)
+                                    && crate::source::frontmost_pid() == Some(pid)
+                                {
+                                    crate::popup::run_auto_popup_capture(&app, 0);
+                                }
+                            }
+                        }
+                    }
+                    was_down = is_down;
+                    std::thread::sleep(std::time::Duration::from_millis(20));
+                }
+            });
+        }
+        #[cfg(not(target_os = "windows"))]
+        let _ = app;
+    }
 }
 
 pub fn uninstall() {

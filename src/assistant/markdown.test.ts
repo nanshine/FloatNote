@@ -60,8 +60,8 @@ describe("renderMarkdown", () => {
     expect(renderMarkdown("before\n\n---\n\nafter")).toBe(`<p>before</p><hr><p>after</p>`);
   });
 
-  it("merges consecutive non-empty lines into one paragraph", () => {
-    expect(renderMarkdown("line one\nline two")).toBe(`<p>line one line two</p>`);
+  it("preserves ordinary Markdown line breaks inside a paragraph", () => {
+    expect(renderMarkdown("line one\nline two")).toBe(`<p>line one<br>line two</p>`);
   });
 
   it("returns empty string for empty input", () => {
