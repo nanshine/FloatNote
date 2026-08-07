@@ -79,8 +79,9 @@ impl AgentHandle {
 }
 
 /// 开发期 sidecar 启动命令。
-/// 优先使用 sidecar 本地安装的 tsx（`node_modules/.bin/tsx`），
-/// 避免依赖全局 `npx`，提升从 Finder/Dock 启动时的可靠性。
+/// 优先直接定位 tsx 的 JS CLI 入口（sidecar 本地或 npm workspaces hoist 到仓库根），
+/// 用 node 执行，避免依赖 .bin shim 或全局 `npx`（Windows 下 npx 只有 .cmd/.ps1，
+/// `std::process::Command` 无法直接执行），并提升从 Finder/Dock 启动时的可靠性。
 #[cfg(debug_assertions)]
 fn sidecar_command() -> Command {
     // CARGO_MANIFEST_DIR = <repo>/src-tauri，其父目录即仓库根。
@@ -91,17 +92,27 @@ fn sidecar_command() -> Command {
     let sidecar_dir = repo_root.join("sidecar");
     let main_ts = sidecar_dir.join("src").join("main.ts");
 
-    // 优先使用 sidecar 本地安装的 tsx，避免依赖全局 npx。
-    let local_tsx = sidecar_dir.join("node_modules").join(".bin").join("tsx");
-    let (program, leading_args): (PathBuf, &[&str]) = if local_tsx.exists() {
-        (local_tsx, &[])
-    } else {
-        (PathBuf::from("npx"), &["tsx"])
-    };
+    // tsx 可能安装在 sidecar 本地，也可能被 npm workspaces hoist 到仓库根，
+    // 因此直接定位 tsx 的 JS CLI 入口（dist/cli.mjs）并用 node 执行。
+    let tsx_cli = [sidecar_dir.join("node_modules"), repo_root.join("node_modules")]
+        .into_iter()
+        .map(|base| base.join("tsx").join("dist").join("cli.mjs"))
+        .find(|path| path.is_file());
 
-    let mut cmd = Command::new(&program);
-    cmd.args(leading_args)
-        .arg(&main_ts)
+    let mut cmd = match tsx_cli {
+        Some(cli) => {
+            let mut c = Command::new("node");
+            c.arg(cli);
+            c
+        }
+        None => {
+            // 兜底：npx（macOS/Linux 下可通过 PATH 解析）。
+            let mut c = Command::new("npx");
+            c.arg("tsx");
+            c
+        }
+    };
+    cmd.arg(&main_ts)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::inherit())
