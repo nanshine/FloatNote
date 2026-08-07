@@ -14,9 +14,20 @@ use std::sync::{mpsc, Mutex};
 #[cfg(target_os = "macos")]
 use std::thread::JoinHandle;
 #[cfg(target_os = "windows")]
-use std::sync::OnceLock;
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc, Mutex,
+};
 #[cfg(target_os = "windows")]
-use windows_sys::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_LBUTTON};
+use std::thread::JoinHandle;
+#[cfg(target_os = "windows")]
+use std::time::Instant;
+#[cfg(target_os = "windows")]
+use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
+    GetAsyncKeyState, GetDoubleClickTime, VK_LBUTTON, VK_SHIFT,
+};
+#[cfg(target_os = "windows")]
+use windows_sys::Win32::UI::WindowsAndMessaging::GetCursorPos;
 use tauri::{AppHandle, Manager};
 
 use crate::selection_intent::Point;
@@ -173,8 +184,115 @@ static MONITOR: Mutex<Option<MonitorRuntime>> = Mutex::new(None);
 
 #[cfg(target_os = "macos")]
 static LATEST_SELECTION_EVENT: AtomicU64 = AtomicU64::new(0);
+
+/// Owned handle to the Windows polling monitor. Holding the stop flag + thread
+/// join lets `uninstall` actually stop the loop and lets `install` start a
+/// fresh one, mirroring the macOS monitor lifecycle.
 #[cfg(target_os = "windows")]
-static WINDOWS_MONITOR: OnceLock<()> = OnceLock::new();
+struct WindowsMonitorRuntime {
+    stop: Arc<AtomicBool>,
+    handle: JoinHandle<()>,
+}
+
+#[cfg(target_os = "windows")]
+static WINDOWS_MONITOR: Mutex<Option<WindowsMonitorRuntime>> = Mutex::new(None);
+
+#[cfg(target_os = "windows")]
+#[derive(Clone, Copy)]
+struct WinDownState {
+    pid: i32,
+    x: i32,
+    y: i32,
+}
+
+#[cfg(target_os = "windows")]
+#[derive(Clone, Copy)]
+struct WinUpState {
+    pid: i32,
+    x: i32,
+    y: i32,
+    at: Instant,
+}
+
+#[cfg(target_os = "windows")]
+fn cursor_pos() -> Option<(i32, i32)> {
+    let mut point = windows_sys::Win32::Foundation::POINT { x: 0, y: 0 };
+    if unsafe { GetCursorPos(&mut point) } != 0 {
+        Some((point.x, point.y))
+    } else {
+        None
+    }
+}
+
+/// Whether a completed left-button press looks like a text-selection gesture.
+/// A plain click (small movement, no double-click, no Shift held) is treated as
+/// a no-op so we never synthesize a copy shortcut for it.
+#[cfg(target_os = "windows")]
+fn has_selection_intent(
+    down: WinDownState,
+    up: WinUpState,
+    last_up: Option<WinUpState>,
+    shift_held: bool,
+) -> bool {
+    let dx = (up.x - down.x) as f64;
+    let dy = (up.y - down.y) as f64;
+    if (dx * dx + dy * dy).sqrt() >= crate::selection_intent::DRAG_THRESHOLD {
+        return true;
+    }
+    if shift_held {
+        return true;
+    }
+    let double_click_ms = unsafe { GetDoubleClickTime() } as u64;
+    last_up.is_some_and(|previous| {
+        previous.pid == down.pid
+            && up.at.duration_since(previous.at).as_millis() as u64 <= double_click_ms
+            && (up.x - previous.x).abs() < crate::selection_intent::DRAG_THRESHOLD as i32
+            && (up.y - previous.y).abs() < crate::selection_intent::DRAG_THRESHOLD as i32
+    })
+}
+
+/// Windows polling monitor. Tracks left-button presses and only reports a
+/// selection when the gesture indicates one (drag, double-click, or
+/// Shift+click) and the foreground PID/window stayed the same from press to
+/// release. Exits as soon as `stop` is set so `uninstall` can join it.
+#[cfg(target_os = "windows")]
+fn windows_monitor_loop(app: AppHandle, stop: Arc<AtomicBool>) {
+    let mut was_down = false;
+    let mut down_state: Option<WinDownState> = None;
+    let mut last_up: Option<WinUpState> = None;
+    while !stop.load(Ordering::SeqCst) {
+        let is_down = unsafe { GetAsyncKeyState(VK_LBUTTON as i32) } < 0;
+        if is_down && !was_down {
+            down_state = crate::source::frontmost_pid().and_then(|pid| {
+                cursor_pos().map(|(x, y)| WinDownState { pid, x, y })
+            });
+        } else if !is_down && was_down {
+            if let Some(down) = down_state.take() {
+                let now = Instant::now();
+                if let Some((x, y)) = cursor_pos() {
+                    let up = WinUpState { pid: down.pid, x, y, at: now };
+                    let shift_held = unsafe { GetAsyncKeyState(VK_SHIFT as i32) } < 0;
+                    if has_selection_intent(down, up, last_up, shift_held)
+                        && auto_mode_enabled(&app)
+                        && crate::source::frontmost_pid() == Some(down.pid)
+                    {
+                        // Give the source app a moment to finish rendering the
+                        // selection before capturing.
+                        std::thread::sleep(std::time::Duration::from_millis(70));
+                        if auto_mode_enabled(&app)
+                            && crate::source::frontmost_pid() == Some(down.pid)
+                        {
+                            crate::popup::run_auto_popup_capture(&app, 0);
+                        }
+                    }
+                    last_up = Some(up);
+                }
+            }
+        }
+        was_down = is_down;
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+}
 
 fn auto_mode_enabled(app: &AppHandle) -> bool {
     app.try_state::<crate::state::AppState>()
@@ -358,34 +476,18 @@ pub fn install(app: AppHandle) {
     {
         #[cfg(target_os = "windows")]
         {
-            if WINDOWS_MONITOR.set(()).is_err() {
+            let mut slot = WINDOWS_MONITOR
+                .lock()
+                .expect("WINDOWS_MONITOR mutex poisoned");
+            if slot.is_some() {
                 return;
             }
-            std::thread::spawn(move || {
-                let mut was_down = false;
-                let mut source_pid = None;
-                loop {
-                    let is_down = unsafe { GetAsyncKeyState(VK_LBUTTON as i32) } < 0;
-                    if is_down && !was_down {
-                        source_pid = crate::capture::external_frontmost_pid();
-                    } else if !is_down && was_down {
-                        if let Some(pid) = source_pid.take() {
-                            if auto_mode_enabled(&app)
-                                && crate::source::frontmost_pid() == Some(pid)
-                            {
-                                std::thread::sleep(std::time::Duration::from_millis(70));
-                                if auto_mode_enabled(&app)
-                                    && crate::source::frontmost_pid() == Some(pid)
-                                {
-                                    crate::popup::run_auto_popup_capture(&app, 0);
-                                }
-                            }
-                        }
-                    }
-                    was_down = is_down;
-                    std::thread::sleep(std::time::Duration::from_millis(20));
-                }
-            });
+            let stop = Arc::new(AtomicBool::new(false));
+            let handle = {
+                let stop = stop.clone();
+                std::thread::spawn(move || windows_monitor_loop(app, stop))
+            };
+            *slot = Some(WindowsMonitorRuntime { stop, handle });
         }
         #[cfg(not(target_os = "windows"))]
         let _ = app;
@@ -398,6 +500,15 @@ pub fn uninstall() {
         unsafe { cg::CFRunLoopStop(runtime.run_loop as *mut c_void) };
         let _ = runtime.event_thread.join();
         let _ = runtime.worker_thread.join();
+    }
+    #[cfg(target_os = "windows")]
+    if let Some(runtime) = WINDOWS_MONITOR
+        .lock()
+        .expect("WINDOWS_MONITOR mutex poisoned")
+        .take()
+    {
+        runtime.stop.store(true, Ordering::SeqCst);
+        let _ = runtime.handle.join();
     }
 }
 
@@ -431,5 +542,56 @@ mod tests {
         assert!(!should_dismiss_for_key(false, false));
         assert!(should_dismiss_for_key(true, false));
         assert!(!should_dismiss_for_key(true, true));
+    }
+
+    #[cfg(target_os = "windows")]
+    fn win_down() -> WinDownState {
+        WinDownState { pid: 42, x: 100, y: 100 }
+    }
+
+    #[cfg(target_os = "windows")]
+    fn win_up(pid: i32, x: i32, y: i32) -> WinUpState {
+        WinUpState { pid, x, y, at: Instant::now() }
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn plain_click_is_not_a_selection_gesture() {
+        assert!(!has_selection_intent(win_down(), win_up(42, 100, 100), None, false));
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn small_jitter_is_still_a_plain_click() {
+        assert!(!has_selection_intent(win_down(), win_up(42, 101, 100), None, false));
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn drag_beyond_threshold_is_selection_intent() {
+        assert!(has_selection_intent(win_down(), win_up(42, 120, 100), None, false));
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn shift_click_is_selection_intent_even_without_movement() {
+        assert!(has_selection_intent(win_down(), win_up(42, 100, 100), None, true));
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn quick_second_click_in_place_is_a_double_click() {
+        let first = win_up(42, 100, 100);
+        let second = WinUpState { at: Instant::now(), ..first };
+        assert!(has_selection_intent(win_down(), second, Some(first), false));
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn pid_change_breaks_double_click_detection() {
+        let first = win_up(42, 100, 100);
+        let second = WinUpState { at: Instant::now(), ..first };
+        let down = WinDownState { pid: 7, x: 100, y: 100 };
+        assert!(!has_selection_intent(down, second, Some(first), false));
     }
 }
