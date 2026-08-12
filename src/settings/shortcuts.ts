@@ -9,7 +9,7 @@ export function mountShortcutSettings(root: HTMLElement, config: Config): void {
     ${shortcutMarkup("toggle", "显示 / 隐藏窗口", config.shortcut_toggle)}
   </div></section>
   <section class="settings-section" aria-labelledby="popup-trigger-title"><h2 id="popup-trigger-title">选中文字弹窗</h2><div class="settings-card">
-    <div class="settings-line"><div><label for="auto-popup-mode"><strong>触发方式</strong></label><small>${isMac() ? "选中文字后自动弹出，或手动按键唤出" : "自动弹出暂仅支持 macOS，可改用快捷键唤出"}</small></div><span class="select-wrap"><select id="auto-popup-mode" class="fn-control"><option value="auto">自动弹出</option><option value="shortcut">快捷键</option><option value="off">关闭</option></select></span></div>
+    <div class="settings-line"><div><label for="auto-popup-mode"><strong>触发方式</strong></label><small>选中文字后自动弹出，或手动按快捷键唤出</small></div><span class="select-wrap"><select id="auto-popup-mode" class="fn-control"><option value="auto">自动弹出</option><option value="shortcut">快捷键</option><option value="off">关闭</option></select></span></div>
     <div id="popup-shortcut-row" class="popup-shortcut-row" ${config.auto_popup_mode === "shortcut" ? "" : "hidden"}>${shortcutMarkup("popup", "打开选中文字弹窗", config.shortcut_popup)}</div>
     <p id="popup-mode-error" class="settings-inline-error" role="alert"></p>
   </div></section>
@@ -66,8 +66,4 @@ export function mountShortcutSettings(root: HTMLElement, config: Config): void {
 
 function shortcutMarkup(id: ShortcutFieldId, label: string, value: string): string {
   return `<div class="shortcut-line"><div><strong>${label}</strong><span id="shortcut-error-${id}" class="shortcut-error" data-shortcut="${id}" role="alert"></span></div><div id="recorder-${id}" class="key-recorder" role="button" tabindex="0" aria-label="录制${label}快捷键" aria-describedby="shortcut-error-${id}"><span class="key-recorder-label">${formatComboHtml(value)}</span></div></div>`;
-}
-
-function isMac(): boolean {
-  return typeof navigator !== "undefined" && /Mac/i.test(navigator.platform);
 }

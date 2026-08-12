@@ -173,17 +173,28 @@ pub struct WindowShortcuts {
 
 impl Default for WindowShortcuts {
     fn default() -> Self {
+        let modifier = primary_shortcut_modifier();
         WindowShortcuts {
-            assistant: "Cmd+J".to_string(),
-            assistant_bubble: "Cmd+B".to_string(),
-            action_panel: "Cmd+T".to_string(),
-            add_action: "Cmd+G".to_string(),
-            new_conversation: "Cmd+K".to_string(),
-            view_inbox: "Cmd+1".to_string(),
-            view_piece: "Cmd+2".to_string(),
-            view_split: "Cmd+3".to_string(),
+            assistant: format!("{modifier}+J"),
+            assistant_bubble: format!("{modifier}+B"),
+            action_panel: format!("{modifier}+T"),
+            add_action: format!("{modifier}+G"),
+            new_conversation: format!("{modifier}+K"),
+            view_inbox: format!("{modifier}+1"),
+            view_piece: format!("{modifier}+2"),
+            view_split: format!("{modifier}+3"),
         }
     }
+}
+
+#[cfg(target_os = "macos")]
+fn primary_shortcut_modifier() -> &'static str {
+    "Cmd"
+}
+
+#[cfg(not(target_os = "macos"))]
+fn primary_shortcut_modifier() -> &'static str {
+    "Ctrl"
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -219,11 +230,12 @@ pub struct Config {
 
 impl Default for Config {
     fn default() -> Self {
+        let modifier = primary_shortcut_modifier();
         Config {
             working_dir: None,
-            shortcut_capture: "Alt+Cmd+C".to_string(),
-            shortcut_toggle: "Alt+Cmd+N".to_string(),
-            shortcut_popup: "Alt+Cmd+P".to_string(),
+            shortcut_capture: format!("Alt+{modifier}+C"),
+            shortcut_toggle: format!("Alt+{modifier}+N"),
+            shortcut_popup: format!("Alt+{modifier}+P"),
             auto_popup_mode: "auto".to_string(),
             window_shortcuts: WindowShortcuts::default(),
             launch_at_login: false,
@@ -243,12 +255,54 @@ pub fn load(path: &Path) -> Config {
         Ok(contents) => {
             let mut config: Config = serde_json::from_str(&contents).unwrap_or_default();
             config.auto_popup_mode = normalize_auto_popup_mode(&config.auto_popup_mode);
+            migrate_windows_shortcuts(&mut config);
             config.ai_settings.normalize_loaded();
             config
         }
         Err(_) => Config::default(),
     }
 }
+
+#[cfg(target_os = "windows")]
+fn migrate_windows_shortcut(value: &mut String) {
+    if value
+        .split('+')
+        .any(|part| part.trim().eq_ignore_ascii_case("cmd"))
+        && !value
+            .split('+')
+            .any(|part| part.trim().eq_ignore_ascii_case("ctrl"))
+    {
+        *value = value
+            .split('+')
+            .map(|part| {
+                if part.trim().eq_ignore_ascii_case("cmd") {
+                    "Ctrl"
+                } else {
+                    part.trim()
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("+");
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn migrate_windows_shortcuts(config: &mut Config) {
+    migrate_windows_shortcut(&mut config.shortcut_capture);
+    migrate_windows_shortcut(&mut config.shortcut_toggle);
+    migrate_windows_shortcut(&mut config.shortcut_popup);
+    migrate_windows_shortcut(&mut config.window_shortcuts.assistant);
+    migrate_windows_shortcut(&mut config.window_shortcuts.assistant_bubble);
+    migrate_windows_shortcut(&mut config.window_shortcuts.action_panel);
+    migrate_windows_shortcut(&mut config.window_shortcuts.add_action);
+    migrate_windows_shortcut(&mut config.window_shortcuts.new_conversation);
+    migrate_windows_shortcut(&mut config.window_shortcuts.view_inbox);
+    migrate_windows_shortcut(&mut config.window_shortcuts.view_piece);
+    migrate_windows_shortcut(&mut config.window_shortcuts.view_split);
+}
+
+#[cfg(not(target_os = "windows"))]
+fn migrate_windows_shortcuts(_config: &mut Config) {}
 
 pub fn normalize_auto_popup_mode(mode: &str) -> String {
     match mode {
@@ -331,7 +385,7 @@ mod tests {
     fn partial_json_keeps_other_defaults() {
         let config: Config = serde_json::from_str(r#"{"launch_at_login":true}"#).unwrap();
         assert!(config.launch_at_login);
-        assert_eq!(config.shortcut_capture, "Alt+Cmd+C");
+        assert_eq!(config.shortcut_capture, format!("Alt+{}+C", primary_shortcut_modifier()));
         assert_eq!(config.assistant_output_mode, AssistantOutputMode::Compact);
     }
 
@@ -401,13 +455,13 @@ mod tests {
     #[test]
     fn popup_shortcut_has_default() {
         let config = Config::default();
-        assert_eq!(config.shortcut_popup, "Alt+Cmd+P");
+        assert_eq!(config.shortcut_popup, format!("Alt+{}+P", primary_shortcut_modifier()));
     }
 
     #[test]
     fn partial_json_keeps_popup_default() {
         let config: Config = serde_json::from_str("{}").unwrap();
-        assert_eq!(config.shortcut_popup, "Alt+Cmd+P");
+        assert_eq!(config.shortcut_popup, format!("Alt+{}+P", primary_shortcut_modifier()));
     }
 
     #[test]
@@ -426,14 +480,14 @@ mod tests {
     #[test]
     fn window_shortcuts_default() {
         let c = Config::default();
-        assert_eq!(c.window_shortcuts.assistant, "Cmd+J");
-        assert_eq!(c.window_shortcuts.view_split, "Cmd+3");
+        assert_eq!(c.window_shortcuts.assistant, format!("{}+J", primary_shortcut_modifier()));
+        assert_eq!(c.window_shortcuts.view_split, format!("{}+3", primary_shortcut_modifier()));
     }
 
     #[test]
     fn partial_json_keeps_window_shortcuts_default() {
         let config: Config = serde_json::from_str("{}").unwrap();
-        assert_eq!(config.window_shortcuts.assistant, "Cmd+J");
+        assert_eq!(config.window_shortcuts.assistant, format!("{}+J", primary_shortcut_modifier()));
     }
 
     #[test]

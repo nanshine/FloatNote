@@ -78,6 +78,17 @@ pub fn capture_source(app: &tauri::AppHandle) -> Option<Source> {
 
 #[cfg(not(target_os = "macos"))]
 pub fn capture_source(_app: &tauri::AppHandle) -> Option<Source> {
+    #[cfg(target_os = "windows")]
+    {
+        let pid = frontmost_pid()?;
+        return Some(Source {
+            kind: SourceKind::App,
+            title: windows_app_name(pid),
+            url: None,
+            bundle_id: Some(format!("windows:{pid}")),
+        });
+    }
+    #[cfg(not(target_os = "windows"))]
     None
 }
 
@@ -223,7 +234,48 @@ pub fn frontmost_pid() -> Option<i32> {
 
 #[cfg(not(target_os = "macos"))]
 pub fn frontmost_pid() -> Option<i32> {
+    #[cfg(target_os = "windows")]
+    {
+        use windows_sys::Win32::UI::WindowsAndMessaging::{
+            GetForegroundWindow, GetWindowThreadProcessId,
+        };
+        let window = unsafe { GetForegroundWindow() };
+        if window.is_null() {
+            return None;
+        }
+        let mut pid = 0;
+        unsafe { GetWindowThreadProcessId(window, &mut pid) };
+        return (pid != 0).then_some(pid as i32);
+    }
+    #[cfg(not(target_os = "windows"))]
     None
+}
+
+#[cfg(target_os = "windows")]
+fn windows_app_name(pid: i32) -> String {
+    use std::{ffi::OsString, os::windows::ffi::OsStringExt, path::Path};
+    use windows_sys::Win32::{
+        Foundation::CloseHandle,
+        System::Threading::{
+            OpenProcess, QueryFullProcessImageNameW, PROCESS_QUERY_LIMITED_INFORMATION,
+        },
+    };
+    let process = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid as u32) };
+    if !process.is_null() {
+        let mut buffer = vec![0u16; 1024];
+        let mut length = buffer.len() as u32;
+        let ok = unsafe {
+            QueryFullProcessImageNameW(process, 0, buffer.as_mut_ptr(), &mut length)
+        };
+        unsafe { CloseHandle(process) };
+        if ok != 0 {
+            let path = OsString::from_wide(&buffer[..length as usize]);
+            if let Some(name) = Path::new(&path).file_stem().and_then(|name| name.to_str()) {
+                return name.to_string();
+            }
+        }
+    }
+    "Windows 应用".to_string()
 }
 
 /// Build a per-family osascript that returns `URL\nTitle` of the active tab,

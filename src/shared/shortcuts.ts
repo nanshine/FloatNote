@@ -29,15 +29,17 @@ export const WINDOW_SHORTCUT_IDS: WindowShortcutId[] = [
   "view_split",
 ];
 
+const primaryModifier = isMac ? "Cmd" : "Ctrl";
+
 export const WINDOW_SHORTCUT_DEFAULTS: Record<WindowShortcutId, string> = {
-  assistant: "Cmd+J",
-  assistant_bubble: "Cmd+B",
-  action_panel: "Cmd+T",
-  add_action: "Cmd+G",
-  new_conversation: "Cmd+K",
-  view_inbox: "Cmd+1",
-  view_piece: "Cmd+2",
-  view_split: "Cmd+3",
+  assistant: `${primaryModifier}+J`,
+  assistant_bubble: `${primaryModifier}+B`,
+  action_panel: `${primaryModifier}+T`,
+  add_action: `${primaryModifier}+G`,
+  new_conversation: `${primaryModifier}+K`,
+  view_inbox: `${primaryModifier}+1`,
+  view_piece: `${primaryModifier}+2`,
+  view_split: `${primaryModifier}+3`,
 };
 
 export const WINDOW_SHORTCUT_LABELS: Record<WindowShortcutId, string> = {
@@ -69,7 +71,7 @@ export function formatComboForDisplay(combo: string): string {
   }
   return parts.map((p) => {
     switch (p) {
-      case "Meta": case "Mod": return "Win";
+      case "Cmd": case "Meta": case "Mod": return "Ctrl";
       case "Control": return "Ctrl";
       default: return p;
     }
@@ -100,7 +102,7 @@ export function formatComboHtml(combo: string): string {
   }
   return parts.map((p) => {
     switch (p) {
-      case "Meta": case "Mod": return "<span class=\"combo-key\">Win</span>";
+      case "Cmd": case "Meta": case "Mod": return "<span class=\"combo-key\">Ctrl</span>";
       case "Control": return "<span class=\"combo-key\">Ctrl</span>";
       default: return `<span class="combo-key">${p}</span>`;
     }

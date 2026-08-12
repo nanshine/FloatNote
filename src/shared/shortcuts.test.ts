@@ -28,7 +28,8 @@ describe("eventToCombo", () => {
     expect(canonicalize(eventToCombo(fakeKey("1", { meta: true }))!)).toBe("Mod+1");
   });
   it("将 Shift 输入的实体加号归一到等号键", () => {
-    expect(eventToCombo(fakeKey("+", { meta: true, shift: true }))).toBe("Shift+Cmd+=");
+    const primary = process.platform === "darwin" ? "Cmd" : "Win";
+    expect(eventToCombo(fakeKey("+", { meta: true, shift: true }))).toBe(`Shift+${primary}+=`);
   });
 });
 
@@ -136,21 +137,21 @@ describe("formatComboForDisplay", () => {
     vi.resetModules();
   });
 
-  it("Windows 环境：文字 + 空格连接", async () => {
+  it("Windows 环境：Ctrl 文字 + 空格连接", async () => {
     vi.stubGlobal("navigator", { platform: "Win32" });
     vi.resetModules();
     const mod = await import("./shortcuts");
-    expect(mod.formatComboForDisplay("Alt+Cmd+C")).toBe("Alt + Cmd + C");
-    expect(mod.formatComboForDisplay("Cmd+J")).toBe("Cmd + J");
+    expect(mod.formatComboForDisplay("Alt+Cmd+C")).toBe("Alt + Ctrl + C");
+    expect(mod.formatComboForDisplay("Cmd+J")).toBe("Ctrl + J");
     expect(mod.formatComboForDisplay("Ctrl+Shift+K")).toBe("Ctrl + Shift + K");
   });
 
-  it("Windows：Mod/Meta 显示为 Win", async () => {
+  it("Windows：Mod/Meta 显示为 Ctrl", async () => {
     vi.stubGlobal("navigator", { platform: "Win32" });
     vi.resetModules();
     const mod = await import("./shortcuts");
-    expect(mod.formatComboForDisplay("Mod+A")).toBe("Win + A");
-    expect(mod.formatComboForDisplay("Meta+B")).toBe("Win + B");
+    expect(mod.formatComboForDisplay("Mod+A")).toBe("Ctrl + A");
+    expect(mod.formatComboForDisplay("Meta+B")).toBe("Ctrl + B");
   });
 
   it("Mac 环境：符号 + 空格连接", async () => {
@@ -207,7 +208,7 @@ describe("formatComboHtml", () => {
     const mod = await import("./shortcuts");
     const html = mod.formatComboHtml("Alt+Cmd+C");
     expect(html).toContain("combo-key\">Alt</span>");
-    expect(html).toContain("combo-key\">Cmd</span>");
+    expect(html).toContain("combo-key\">Ctrl</span>");
     expect(html).toContain("combo-sep\">+</span>");
   });
 
