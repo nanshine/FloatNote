@@ -224,6 +224,26 @@ fn cursor_pos() -> Option<(i32, i32)> {
     }
 }
 
+#[cfg(target_os = "windows")]
+fn popup_contains_physical_point(app: &AppHandle, x: i32, y: i32) -> Option<bool> {
+    let popup = app.get_webview_window("selection-popup")?;
+    if !popup.is_visible().ok()? {
+        return None;
+    }
+    let position = popup.outer_position().ok()?;
+    let size = popup.outer_size().ok()?;
+    let x = i64::from(x);
+    let y = i64::from(y);
+    let left = i64::from(position.x);
+    let top = i64::from(position.y);
+    Some(
+        x >= left
+            && x <= left + i64::from(size.width)
+            && y >= top
+            && y <= top + i64::from(size.height),
+    )
+}
+
 /// Whether a completed left-button press looks like a text-selection gesture.
 /// A plain click (small movement, no double-click, no Shift held) is treated as
 /// a no-op so we never synthesize a copy shortcut for it.
@@ -263,8 +283,13 @@ fn windows_monitor_loop(app: AppHandle, stop: Arc<AtomicBool>) {
     while !stop.load(Ordering::SeqCst) {
         let is_down = unsafe { GetAsyncKeyState(VK_LBUTTON as i32) } < 0;
         if is_down && !was_down {
+            let point = cursor_pos();
+            if point.is_some_and(|(x, y)| popup_contains_physical_point(&app, x, y) == Some(false))
+            {
+                crate::popup::dismiss_active(&app);
+            }
             down_state = crate::source::foreground_target()
-                .and_then(|target| cursor_pos().map(|(x, y)| WinDownState { target, x, y }));
+                .and_then(|target| point.map(|(x, y)| WinDownState { target, x, y }));
         } else if !is_down && was_down {
             if let Some(down) = down_state.take() {
                 let now = Instant::now();

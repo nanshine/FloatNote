@@ -229,7 +229,7 @@ fn is_valid_auto_popup_mode(mode: &str) -> bool {
 }
 
 pub(crate) fn should_install_selection_monitor(mode: &str) -> bool {
-    mode == "auto"
+    matches!(mode, "auto" | "shortcut")
 }
 
 #[cfg(test)]
@@ -278,7 +278,7 @@ mod tests {
         assert!(!is_valid_auto_popup_mode("always"));
         assert!(!is_valid_auto_popup_mode("OFF"));
         assert!(should_install_selection_monitor("auto"));
-        assert!(!should_install_selection_monitor("shortcut"));
+        assert!(should_install_selection_monitor("shortcut"));
         assert!(!should_install_selection_monitor("off"));
     }
 

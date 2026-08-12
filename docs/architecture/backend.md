@@ -15,7 +15,8 @@
   `selection_monitor.rs` 在 macOS 的独立 CFRunLoop 上运行 listen-only event tap，
   Windows 则由可停止的轮询线程识别拖选、双击和 Shift+Click。macOS FFI callback
   只投递元数据，AX、窗口和剪贴板操作全部在 worker 执行；Windows 候选保存 PID 与
-  HWND，并将同一目标身份传到捕获完成。
+  HWND，并将同一目标身份传到捕获完成。自动和快捷键弹窗模式都保留监听器以处理
+  外部点击关闭；只有自动模式会把选择手势继续交给捕获流程。
 - `popup.rs` 为每次有效捕获分配 `generationId`。提交、关闭和前端 payload
   都携带该代次，过期的异步捕获不能覆盖或关闭更新的弹窗。
 
