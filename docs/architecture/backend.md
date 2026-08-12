@@ -12,8 +12,10 @@
   Finder 或 Windows 文件资源管理器中定位项目文件夹和独立文档。
 - `selection_intent.rs` 是纯鼠标选择状态机；`selection_probe.rs` 通过 macOS
   Accessibility 从 focused element、children、ancestors 读取文本；
-  `selection_monitor.rs` 在独立 CFRunLoop 上运行 listen-only event tap。FFI
-  callback 只投递元数据，AX、窗口和剪贴板操作全部在 worker 执行。
+  `selection_monitor.rs` 在 macOS 的独立 CFRunLoop 上运行 listen-only event tap，
+  Windows 则由可停止的轮询线程识别拖选、双击和 Shift+Click。macOS FFI callback
+  只投递元数据，AX、窗口和剪贴板操作全部在 worker 执行；Windows 候选保存 PID 与
+  HWND，并将同一目标身份传到捕获完成。
 - `popup.rs` 为每次有效捕获分配 `generationId`。提交、关闭和前端 payload
   都携带该代次，过期的异步捕获不能覆盖或关闭更新的弹窗。
 
@@ -30,8 +32,9 @@ session 都保留下来；从未形成持久 session 的空白“新对话”不
 mouse-move event tap，以有界通道和 30Hz 节流向 WebView 转发坐标；它不与
 `selection_monitor.rs` 的 down/up/key 队列共享容量。自动、弹窗快捷键与
 直接采集入口都会在 AX 和剪贴板操作前拒绝 FloatNote 自身 PID，因此本软件
-任意窗口内的划词捕获均静默无效。外部应用
-共用 AX-first 捕获并允许定向 `Cmd+C` 兜底；自动失败静默，专用快捷键在外部
+任意窗口内的划词捕获均静默无效。macOS 外部应用使用 AX-first 捕获并允许定向
+`Cmd+C` 兜底；Windows 剪贴板捕获在复制前后校验相同 PID+HWND，完整枚举并预分配
+恢复数据，忽略可由 Windows 重建的合成格式并专门复制增强型图元文件。自动失败静默，专用快捷键在外部
 应用无有效选区时仍允许显示短暂的空结果反馈。已缓存的外部选区可在弹窗成为
 前台窗口后正常提交。
 

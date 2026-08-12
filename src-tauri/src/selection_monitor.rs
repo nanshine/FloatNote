@@ -9,26 +9,26 @@
 use std::ffi::c_void;
 #[cfg(target_os = "macos")]
 use std::sync::atomic::{AtomicPtr, AtomicU64, Ordering};
-#[cfg(target_os = "macos")]
-use std::sync::{mpsc, Mutex};
-#[cfg(target_os = "macos")]
-use std::thread::JoinHandle;
 #[cfg(target_os = "windows")]
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc, Mutex,
 };
+#[cfg(target_os = "macos")]
+use std::sync::{mpsc, Mutex};
+#[cfg(target_os = "macos")]
+use std::thread::JoinHandle;
 #[cfg(target_os = "windows")]
 use std::thread::JoinHandle;
 #[cfg(target_os = "windows")]
 use std::time::Instant;
+use tauri::{AppHandle, Manager};
 #[cfg(target_os = "windows")]
 use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
     GetAsyncKeyState, GetDoubleClickTime, VK_LBUTTON, VK_SHIFT,
 };
 #[cfg(target_os = "windows")]
 use windows_sys::Win32::UI::WindowsAndMessaging::GetCursorPos;
-use tauri::{AppHandle, Manager};
 
 use crate::selection_intent::Point;
 #[cfg(target_os = "macos")]
@@ -200,7 +200,7 @@ static WINDOWS_MONITOR: Mutex<Option<WindowsMonitorRuntime>> = Mutex::new(None);
 #[cfg(target_os = "windows")]
 #[derive(Clone, Copy)]
 struct WinDownState {
-    pid: i32,
+    target: crate::source::ForegroundTarget,
     x: i32,
     y: i32,
 }
@@ -208,7 +208,7 @@ struct WinDownState {
 #[cfg(target_os = "windows")]
 #[derive(Clone, Copy)]
 struct WinUpState {
-    pid: i32,
+    target: crate::source::ForegroundTarget,
     x: i32,
     y: i32,
     at: Instant,
@@ -244,7 +244,7 @@ fn has_selection_intent(
     }
     let double_click_ms = unsafe { GetDoubleClickTime() } as u64;
     last_up.is_some_and(|previous| {
-        previous.pid == down.pid
+        previous.target == down.target
             && up.at.duration_since(previous.at).as_millis() as u64 <= double_click_ms
             && (up.x - previous.x).abs() < crate::selection_intent::DRAG_THRESHOLD as i32
             && (up.y - previous.y).abs() < crate::selection_intent::DRAG_THRESHOLD as i32
@@ -263,26 +263,30 @@ fn windows_monitor_loop(app: AppHandle, stop: Arc<AtomicBool>) {
     while !stop.load(Ordering::SeqCst) {
         let is_down = unsafe { GetAsyncKeyState(VK_LBUTTON as i32) } < 0;
         if is_down && !was_down {
-            down_state = crate::source::frontmost_pid().and_then(|pid| {
-                cursor_pos().map(|(x, y)| WinDownState { pid, x, y })
-            });
+            down_state = crate::source::foreground_target()
+                .and_then(|target| cursor_pos().map(|(x, y)| WinDownState { target, x, y }));
         } else if !is_down && was_down {
             if let Some(down) = down_state.take() {
                 let now = Instant::now();
                 if let Some((x, y)) = cursor_pos() {
-                    let up = WinUpState { pid: down.pid, x, y, at: now };
+                    let up = WinUpState {
+                        target: down.target,
+                        x,
+                        y,
+                        at: now,
+                    };
                     let shift_held = unsafe { GetAsyncKeyState(VK_SHIFT as i32) } < 0;
                     if has_selection_intent(down, up, last_up, shift_held)
                         && auto_mode_enabled(&app)
-                        && crate::source::frontmost_pid() == Some(down.pid)
+                        && crate::source::foreground_target() == Some(down.target)
                     {
                         // Give the source app a moment to finish rendering the
                         // selection before capturing.
                         std::thread::sleep(std::time::Duration::from_millis(70));
                         if auto_mode_enabled(&app)
-                            && crate::source::frontmost_pid() == Some(down.pid)
+                            && crate::source::foreground_target() == Some(down.target)
                         {
-                            crate::popup::run_auto_popup_capture(&app, 0);
+                            crate::popup::run_windows_auto_popup_capture(&app, down.target);
                         }
                     }
                     last_up = Some(up);
@@ -545,53 +549,100 @@ mod tests {
     }
 
     #[cfg(target_os = "windows")]
-    fn win_down() -> WinDownState {
-        WinDownState { pid: 42, x: 100, y: 100 }
+    fn win_target(pid: i32, window_id: usize) -> crate::source::ForegroundTarget {
+        crate::source::ForegroundTarget {
+            pid,
+            window_id: Some(window_id),
+        }
     }
 
     #[cfg(target_os = "windows")]
-    fn win_up(pid: i32, x: i32, y: i32) -> WinUpState {
-        WinUpState { pid, x, y, at: Instant::now() }
+    fn win_down() -> WinDownState {
+        WinDownState {
+            target: win_target(42, 1000),
+            x: 100,
+            y: 100,
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    fn win_up(pid: i32, window_id: usize, x: i32, y: i32) -> WinUpState {
+        WinUpState {
+            target: win_target(pid, window_id),
+            x,
+            y,
+            at: Instant::now(),
+        }
     }
 
     #[cfg(target_os = "windows")]
     #[test]
     fn plain_click_is_not_a_selection_gesture() {
-        assert!(!has_selection_intent(win_down(), win_up(42, 100, 100), None, false));
+        assert!(!has_selection_intent(
+            win_down(),
+            win_up(42, 1000, 100, 100),
+            None,
+            false
+        ));
     }
 
     #[cfg(target_os = "windows")]
     #[test]
     fn small_jitter_is_still_a_plain_click() {
-        assert!(!has_selection_intent(win_down(), win_up(42, 101, 100), None, false));
+        assert!(!has_selection_intent(
+            win_down(),
+            win_up(42, 1000, 101, 100),
+            None,
+            false
+        ));
     }
 
     #[cfg(target_os = "windows")]
     #[test]
     fn drag_beyond_threshold_is_selection_intent() {
-        assert!(has_selection_intent(win_down(), win_up(42, 120, 100), None, false));
+        assert!(has_selection_intent(
+            win_down(),
+            win_up(42, 1000, 120, 100),
+            None,
+            false
+        ));
     }
 
     #[cfg(target_os = "windows")]
     #[test]
     fn shift_click_is_selection_intent_even_without_movement() {
-        assert!(has_selection_intent(win_down(), win_up(42, 100, 100), None, true));
+        assert!(has_selection_intent(
+            win_down(),
+            win_up(42, 1000, 100, 100),
+            None,
+            true
+        ));
     }
 
     #[cfg(target_os = "windows")]
     #[test]
     fn quick_second_click_in_place_is_a_double_click() {
-        let first = win_up(42, 100, 100);
-        let second = WinUpState { at: Instant::now(), ..first };
+        let first = win_up(42, 1000, 100, 100);
+        let second = WinUpState {
+            at: Instant::now(),
+            ..first
+        };
         assert!(has_selection_intent(win_down(), second, Some(first), false));
     }
 
     #[cfg(target_os = "windows")]
     #[test]
-    fn pid_change_breaks_double_click_detection() {
-        let first = win_up(42, 100, 100);
-        let second = WinUpState { at: Instant::now(), ..first };
-        let down = WinDownState { pid: 7, x: 100, y: 100 };
+    fn process_or_window_change_breaks_double_click_detection() {
+        let first = win_up(42, 1000, 100, 100);
+        let second = WinUpState {
+            at: Instant::now(),
+            ..first
+        };
+        let down = WinDownState {
+            target: win_target(42, 2000),
+            x: 100,
+            y: 100,
+        };
         assert!(!has_selection_intent(down, second, Some(first), false));
     }
 }

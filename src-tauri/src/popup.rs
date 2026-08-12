@@ -334,22 +334,32 @@ pub fn dismiss_popup(
 /// Global shortcut entry: eagerly capture the selection while the source app
 /// is still focused, cache it, then tell the popup window to show at the cursor.
 pub fn run_popup_capture(app: &AppHandle) {
-    run_popup_capture_with_origin(app, PopupOrigin::Shortcut, None);
+    run_popup_capture_with_origin(app, PopupOrigin::Shortcut, None, None);
 }
 
 pub fn run_auto_popup_capture(app: &AppHandle, selection_event: u64) {
-    run_popup_capture_with_origin(app, PopupOrigin::Auto, Some(selection_event));
+    run_popup_capture_with_origin(app, PopupOrigin::Auto, Some(selection_event), None);
+}
+
+#[cfg(target_os = "windows")]
+pub fn run_windows_auto_popup_capture(app: &AppHandle, target: crate::source::ForegroundTarget) {
+    run_popup_capture_with_origin(app, PopupOrigin::Auto, None, Some(target));
 }
 
 fn run_popup_capture_with_origin(
     app: &AppHandle,
     origin: PopupOrigin,
     selection_event: Option<u64>,
+    expected_target: Option<crate::source::ForegroundTarget>,
 ) {
     // FloatNote never captures from its own windows. Check before the
     // accessibility prompt so the global popup shortcut is a silent no-op
     // while any FloatNote window is frontmost.
-    if crate::capture::external_frontmost_pid().is_none() {
+    let Some(target) = expected_target.or_else(crate::capture::external_frontmost_target) else {
+        return;
+    };
+    if target.pid == std::process::id() as i32 || crate::source::foreground_target() != Some(target)
+    {
         return;
     }
 
@@ -363,7 +373,7 @@ fn run_popup_capture_with_origin(
         return;
     }
 
-    let captured = crate::capture::capture_current_selection();
+    let captured = crate::capture::capture_current_selection_for_target(app, target);
     #[cfg(target_os = "macos")]
     if selection_event
         .is_some_and(|event| !crate::selection_monitor::is_current_selection_event(event))
@@ -376,13 +386,13 @@ fn run_popup_capture_with_origin(
     if !should_emit(
         origin,
         has_text,
-        crate::capture::external_frontmost_pid().is_some(),
+        crate::source::foreground_target() == Some(target),
     ) {
         return;
     }
     let generation_id = if let Some(ref c) = captured {
         // Source app is still frontmost here (popup window is shown only below).
-        let source = crate::source::capture_source(app);
+        let source = crate::source::capture_source_for_pid(app, c.source_pid);
         state_set(app, c.text.clone(), c.html.clone(), source).unwrap_or(0)
     } else {
         state_begin_empty(app).unwrap_or(0)

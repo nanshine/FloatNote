@@ -48,9 +48,9 @@ fn log_line(msg: &str) {
 }
 
 pub fn run_capture(app: &AppHandle) {
-    if external_frontmost_pid().is_none() {
+    let Some(target) = external_frontmost_target() else {
         return;
-    }
+    };
 
     let Some(_guard) = CaptureGuard::try_enter() else {
         log_line("already capturing, skipping");
@@ -63,11 +63,11 @@ pub fn run_capture(app: &AppHandle) {
 
     log_line("fired");
 
-    let Some(captured) = capture_current_selection() else {
+    let Some(captured) = capture_current_selection_for_target(app, target) else {
         return;
     };
 
-    let source = crate::source::capture_source(app);
+    let source = crate::source::capture_source_for_pid(app, captured.source_pid);
     let payload = crate::source::QuotePayload {
         text: captured.text,
         html: captured.html,
@@ -257,13 +257,21 @@ pub(crate) fn is_external_frontmost_process(pid: Option<i32>, own_pid: i32) -> b
     pid.is_some_and(|pid| pid != own_pid)
 }
 
-pub(crate) fn external_frontmost_pid() -> Option<i32> {
-    let pid = crate::source::frontmost_pid();
-    is_external_frontmost_process(pid, std::process::id() as i32).then_some(pid?)
+pub(crate) fn external_frontmost_target() -> Option<crate::source::ForegroundTarget> {
+    let target = crate::source::foreground_target()?;
+    is_external_frontmost_process(Some(target.pid), std::process::id() as i32).then_some(target)
 }
 
-pub fn capture_current_selection() -> Option<CurrentSelection> {
-    let pid = external_frontmost_pid()?;
+pub(crate) fn capture_current_selection_for_target(
+    app: &AppHandle,
+    target: crate::source::ForegroundTarget,
+) -> Option<CurrentSelection> {
+    #[cfg(not(target_os = "windows"))]
+    let _ = app;
+    if crate::source::foreground_target() != Some(target) {
+        return None;
+    }
+    let pid = target.pid;
     if let Some(text) = crate::selection_probe::current_selected_text(pid) {
         let ax = CurrentSelection {
             text,
@@ -280,7 +288,7 @@ pub fn capture_current_selection() -> Option<CurrentSelection> {
     #[cfg(target_os = "macos")]
     return pasteboard::copy_selection(pid);
     #[cfg(target_os = "windows")]
-    return windows_capture::copy_selection(pid);
+    return windows_capture::copy_selection(app, target);
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     None
 }
@@ -290,7 +298,8 @@ mod windows_capture {
     use super::*;
     use std::{mem::size_of, thread, time::Duration};
     use windows_sys::Win32::{
-        Foundation::GlobalFree,
+        Foundation::{GetLastError, GlobalFree, SetLastError, ERROR_SUCCESS, HANDLE},
+        Graphics::Gdi::{DeleteEnhMetaFile, GetEnhMetaFileBits, SetEnhMetaFileBits, HENHMETAFILE},
         System::{
             DataExchange::{
                 CloseClipboard, EmptyClipboard, EnumClipboardFormats, GetClipboardData,
@@ -298,24 +307,22 @@ mod windows_capture {
             },
             Memory::{GlobalAlloc, GlobalLock, GlobalSize, GlobalUnlock, GMEM_MOVEABLE},
         },
-        UI::{
-            Input::KeyboardAndMouse::{
-                SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_KEYUP, VK_C,
-                VK_CONTROL, VK_INSERT,
-            },
-            WindowsAndMessaging::GetForegroundWindow,
+        UI::Input::KeyboardAndMouse::{
+            GetAsyncKeyState, SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT,
+            KEYEVENTF_KEYUP, VK_C, VK_CONTROL, VK_INSERT, VK_MENU, VK_SHIFT,
         },
     };
 
+    const CF_TEXT: u32 = 1;
     const CF_UNICODETEXT: u32 = 13;
-    // Clipboard formats whose payload is a GDI object (or a render-only/private
-    // protocol) that cannot be backed up as raw bytes and faithfully re-created.
-    // If any of these is present, the clipboard fallback is abandoned entirely
-    // instead of risking clearing content we could not restore.
     const CF_BITMAP: u32 = 2;
     const CF_METAFILEPICT: u32 = 3;
+    const CF_OEMTEXT: u32 = 7;
+    const CF_DIB: u32 = 8;
     const CF_PALETTE: u32 = 9;
     const CF_ENHMETAFILE: u32 = 14;
+    const CF_LOCALE: u32 = 16;
+    const CF_DIBV5: u32 = 17;
     const CF_OWNERDISPLAY: u32 = 0x0080;
     const CF_DSPTEXT: u32 = 0x0081;
     const CF_DSPBITMAP: u32 = 0x0082;
@@ -323,15 +330,27 @@ mod windows_capture {
     const CF_DSPENHMETAFILE: u32 = 0x008E;
     const CF_PRIVATEFIRST: u32 = 0x0200;
     const CF_PRIVATELAST: u32 = 0x02FF;
+    const CF_GDIOBJFIRST: u32 = 0x0300;
+    const CF_GDIOBJLAST: u32 = 0x03FF;
 
-    /// A byte-for-byte snapshot of every backup-able clipboard format.
-    struct ClipboardSnapshot {
-        formats: Vec<(u32, Vec<u8>)>,
+    enum SnapshotData {
+        Global(Vec<u8>),
+        EnhancedMetafile(Vec<u8>),
     }
 
-    fn with_clipboard<T>(f: impl FnOnce() -> T) -> Option<T> {
+    struct SnapshotEntry {
+        format: u32,
+        data: SnapshotData,
+    }
+
+    struct ClipboardSnapshot {
+        formats: Vec<SnapshotEntry>,
+    }
+
+    fn with_clipboard<T>(owner: Option<HANDLE>, f: impl FnOnce() -> T) -> Option<T> {
+        let owner = owner.unwrap_or(std::ptr::null_mut());
         for _ in 0..12 {
-            if unsafe { OpenClipboard(std::ptr::null_mut()) } != 0 {
+            if unsafe { OpenClipboard(owner) } != 0 {
                 let value = f();
                 unsafe { CloseClipboard() };
                 return Some(value);
@@ -360,19 +379,25 @@ mod windows_capture {
         Some(text)
     }
 
-    fn backupable(format: u32) -> bool {
-        !matches!(
+    fn synthesized_format(format: u32, formats: &[u32]) -> bool {
+        match format {
+            CF_TEXT | CF_OEMTEXT | CF_LOCALE => formats.contains(&CF_UNICODETEXT),
+            CF_BITMAP | CF_PALETTE => formats.contains(&CF_DIB) || formats.contains(&CF_DIBV5),
+            CF_METAFILEPICT => formats.contains(&CF_ENHMETAFILE),
+            _ => false,
+        }
+    }
+
+    fn unsupported_format(format: u32) -> bool {
+        matches!(
             format,
-            CF_BITMAP
-                | CF_METAFILEPICT
-                | CF_PALETTE
-                | CF_ENHMETAFILE
-                | CF_OWNERDISPLAY
+            CF_OWNERDISPLAY
                 | CF_DSPTEXT
                 | CF_DSPBITMAP
                 | CF_DSPMETAFILEPICT
                 | CF_DSPENHMETAFILE
                 | CF_PRIVATEFIRST..=CF_PRIVATELAST
+                | CF_GDIOBJFIRST..=CF_GDIOBJLAST
         )
     }
 
@@ -390,79 +415,263 @@ mod windows_capture {
         Some(bytes)
     }
 
-    /// Transactional snapshot of the current clipboard. Returns None (abandoning
-    /// the clipboard fallback without touching the clipboard) when the clipboard
-    /// cannot be opened or when any present format cannot be backed up as raw
-    /// bytes. An empty clipboard yields a valid empty snapshot.
+    fn enumerate_formats() -> Option<Vec<u32>> {
+        let mut formats = Vec::new();
+        let mut previous = 0;
+        loop {
+            unsafe { SetLastError(ERROR_SUCCESS) };
+            let next = unsafe { EnumClipboardFormats(previous) };
+            if next == 0 {
+                return (unsafe { GetLastError() } == ERROR_SUCCESS).then_some(formats);
+            }
+            formats.push(next);
+            previous = next;
+        }
+    }
+
+    fn copy_enhanced_metafile(handle: HENHMETAFILE) -> Option<Vec<u8>> {
+        let size = unsafe { GetEnhMetaFileBits(handle, 0, std::ptr::null_mut()) };
+        if size == 0 {
+            return None;
+        }
+        let mut bytes = vec![0; size as usize];
+        (unsafe { GetEnhMetaFileBits(handle, size, bytes.as_mut_ptr()) } == size).then_some(bytes)
+    }
+
+    /// Snapshot every non-synthesized clipboard representation. Enumeration
+    /// errors and genuinely non-copyable formats abort before copy is sent.
     fn snapshot() -> Option<ClipboardSnapshot> {
-        with_clipboard(|| {
-            let mut formats: Vec<(u32, Vec<u8>)> = Vec::new();
-            let mut format = unsafe { EnumClipboardFormats(0) };
-            while format != 0 {
-                let handle = unsafe { GetClipboardData(format) };
-                if !backupable(format) || handle.is_null() {
+        with_clipboard(None, || {
+            let available = enumerate_formats()?;
+            let mut formats = Vec::new();
+            for &format in &available {
+                if synthesized_format(format, &available) {
+                    continue;
+                }
+                if unsupported_format(format) {
                     return None;
                 }
-                formats.push((format, copy_bytes(handle)?));
-                format = unsafe { EnumClipboardFormats(format) };
+                let handle = unsafe { GetClipboardData(format) };
+                if handle.is_null() {
+                    return None;
+                }
+                let data = if format == CF_ENHMETAFILE {
+                    SnapshotData::EnhancedMetafile(copy_enhanced_metafile(handle)?)
+                } else {
+                    SnapshotData::Global(copy_bytes(handle)?)
+                };
+                formats.push(SnapshotEntry { format, data });
             }
             Some(ClipboardSnapshot { formats })
         })
         .flatten()
     }
 
-    /// RAII guard: restores the captured snapshot whenever the enclosing
-    /// capture exits — success, early return, or panic — so the user's
-    /// clipboard is never left holding the copy we triggered.
-    struct RestoreGuard(ClipboardSnapshot);
+    enum PreparedHandle {
+        Global(HANDLE),
+        EnhancedMetafile(HENHMETAFILE),
+    }
+
+    impl PreparedHandle {
+        fn raw(&self) -> HANDLE {
+            match self {
+                Self::Global(handle) | Self::EnhancedMetafile(handle) => *handle,
+            }
+        }
+
+        fn disarm(&mut self) {
+            match self {
+                Self::Global(handle) | Self::EnhancedMetafile(handle) => {
+                    *handle = std::ptr::null_mut();
+                }
+            }
+        }
+    }
+
+    impl Drop for PreparedHandle {
+        fn drop(&mut self) {
+            let handle = self.raw();
+            if handle.is_null() {
+                return;
+            }
+            unsafe {
+                match self {
+                    Self::Global(_) => {
+                        GlobalFree(handle);
+                    }
+                    Self::EnhancedMetafile(_) => {
+                        DeleteEnhMetaFile(handle);
+                    }
+                }
+            }
+        }
+    }
+
+    struct PreparedEntry {
+        format: u32,
+        handle: PreparedHandle,
+    }
+
+    fn prepare_snapshot(snapshot: &ClipboardSnapshot) -> Option<Vec<PreparedEntry>> {
+        snapshot
+            .formats
+            .iter()
+            .map(|entry| {
+                let handle = match &entry.data {
+                    SnapshotData::Global(bytes) => {
+                        let handle = unsafe { GlobalAlloc(GMEM_MOVEABLE, bytes.len()) };
+                        if handle.is_null() {
+                            return None;
+                        }
+                        let ptr = unsafe { GlobalLock(handle) } as *mut u8;
+                        if ptr.is_null() {
+                            unsafe { GlobalFree(handle) };
+                            return None;
+                        }
+                        unsafe {
+                            std::ptr::copy_nonoverlapping(bytes.as_ptr(), ptr, bytes.len());
+                            GlobalUnlock(handle);
+                        }
+                        PreparedHandle::Global(handle)
+                    }
+                    SnapshotData::EnhancedMetafile(bytes) => {
+                        let handle =
+                            unsafe { SetEnhMetaFileBits(bytes.len() as u32, bytes.as_ptr()) };
+                        if handle.is_null() {
+                            return None;
+                        }
+                        PreparedHandle::EnhancedMetafile(handle)
+                    }
+                };
+                Some(PreparedEntry {
+                    format: entry.format,
+                    handle,
+                })
+            })
+            .collect()
+    }
+
+    /// All restoration handles are allocated before copy is sent, so allocation
+    /// failure cannot turn a successful snapshot into destructive restoration.
+    struct RestoreGuard {
+        entries: Vec<PreparedEntry>,
+        owner: HANDLE,
+        armed: bool,
+    }
+
+    impl RestoreGuard {
+        fn prepare(snapshot: &ClipboardSnapshot, owner: HANDLE) -> Option<Self> {
+            if owner.is_null() {
+                return None;
+            }
+            Some(Self {
+                entries: prepare_snapshot(snapshot)?,
+                owner,
+                armed: false,
+            })
+        }
+
+        fn arm(&mut self) {
+            self.armed = true;
+        }
+
+        fn restore(&mut self) -> bool {
+            with_clipboard(Some(self.owner), || {
+                if unsafe { EmptyClipboard() } == 0 {
+                    return false;
+                }
+                for entry in &mut self.entries {
+                    if unsafe { SetClipboardData(entry.format, entry.handle.raw()) }.is_null() {
+                        return false;
+                    }
+                    entry.handle.disarm();
+                }
+                true
+            })
+            .unwrap_or(false)
+        }
+    }
 
     impl Drop for RestoreGuard {
         fn drop(&mut self) {
-            let _ = with_clipboard(|| {
-                unsafe { EmptyClipboard() };
-                for (format, bytes) in &self.0.formats {
-                    if bytes.is_empty() {
-                        continue;
-                    }
-                    let handle = unsafe { GlobalAlloc(GMEM_MOVEABLE, bytes.len()) };
-                    if handle.is_null() {
-                        continue;
-                    }
-                    let ptr = unsafe { GlobalLock(handle) } as *mut u8;
-                    if ptr.is_null() {
-                        unsafe { GlobalFree(handle) };
-                        continue;
-                    }
-                    unsafe {
-                        std::ptr::copy_nonoverlapping(bytes.as_ptr(), ptr, bytes.len());
-                        GlobalUnlock(handle);
-                        // SetClipboardData takes ownership only on success.
-                        if SetClipboardData(*format, handle).is_null() {
-                            GlobalFree(handle);
-                        }
-                    }
-                }
-            });
+            if self.armed && !self.restore() {
+                log_line("failed to restore the complete Windows clipboard snapshot");
+            }
         }
+    }
+
+    fn is_pressed(vk: u16) -> bool {
+        (unsafe { GetAsyncKeyState(vk as i32) }) < 0
+    }
+
+    fn copy_key_plan(
+        vk: u16,
+        ctrl_held: bool,
+        shift_held: bool,
+        alt_held: bool,
+    ) -> Vec<(u16, bool)> {
+        let mut plan = Vec::with_capacity(10);
+        if alt_held {
+            plan.push((VK_MENU, true));
+        }
+        if shift_held {
+            plan.push((VK_SHIFT, true));
+        }
+        if !ctrl_held {
+            plan.push((VK_CONTROL, false));
+        }
+        plan.extend([(vk, false), (vk, true)]);
+        if !ctrl_held {
+            plan.push((VK_CONTROL, true));
+        }
+        if shift_held {
+            plan.push((VK_SHIFT, false));
+        }
+        if alt_held {
+            plan.push((VK_MENU, false));
+        }
+        plan
     }
 
     fn send_copy(vk: u16) -> bool {
         let key = |vk| INPUT {
             r#type: INPUT_KEYBOARD,
             Anonymous: INPUT_0 {
-                ki: KEYBDINPUT { wVk: vk, ..Default::default() },
+                ki: KEYBDINPUT {
+                    wVk: vk,
+                    ..Default::default()
+                },
             },
         };
         let release = |vk| INPUT {
             r#type: INPUT_KEYBOARD,
             Anonymous: INPUT_0 {
-                ki: KEYBDINPUT { wVk: vk, dwFlags: KEYEVENTF_KEYUP, ..Default::default() },
+                ki: KEYBDINPUT {
+                    wVk: vk,
+                    dwFlags: KEYEVENTF_KEYUP,
+                    ..Default::default()
+                },
             },
         };
-        let inputs = [key(VK_CONTROL), key(vk), release(vk), release(VK_CONTROL)];
+        let ctrl_held = is_pressed(VK_CONTROL);
+        let shift_held = is_pressed(VK_SHIFT);
+        let alt_held = is_pressed(VK_MENU);
+        let inputs = copy_key_plan(vk, ctrl_held, shift_held, alt_held)
+            .into_iter()
+            .map(|(key_code, key_up)| {
+                if key_up {
+                    release(key_code)
+                } else {
+                    key(key_code)
+                }
+            })
+            .collect::<Vec<_>>();
         unsafe {
-            SendInput(inputs.len() as u32, inputs.as_ptr(), size_of::<INPUT>() as i32)
-                == inputs.len() as u32
+            SendInput(
+                inputs.len() as u32,
+                inputs.as_ptr(),
+                size_of::<INPUT>() as i32,
+            ) == inputs.len() as u32
         }
     }
 
@@ -480,34 +689,47 @@ mod windows_capture {
         })
     }
 
-    pub fn copy_selection(pid: i32) -> Option<CurrentSelection> {
-        if crate::source::frontmost_pid() != Some(pid)
-            || unsafe { GetForegroundWindow() }.is_null()
-        {
+    fn clipboard_owner(app: &AppHandle) -> Option<HANDLE> {
+        use tauri::Manager;
+        Some(app.get_webview_window("main")?.hwnd().ok()?.0)
+    }
+
+    pub fn copy_selection(
+        app: &AppHandle,
+        target: crate::source::ForegroundTarget,
+    ) -> Option<CurrentSelection> {
+        if target.window_id.is_none() || crate::source::foreground_target() != Some(target) {
             return None;
         }
         // Snapshot before anything else; abandoning here leaves the clipboard
         // untouched. The guard restores it on every exit path below.
         let snapshot = snapshot()?;
-        let _guard = RestoreGuard(snapshot);
+        let mut guard = RestoreGuard::prepare(&snapshot, clipboard_owner(app)?)?;
+
+        if crate::source::foreground_target() != Some(target) {
+            return None;
+        }
 
         // Prefer Ctrl+Insert (which terminals and most editors map to copy and
         // never interrupts a running process); fall back to Ctrl+C only if the
         // clipboard did not change.
+        guard.arm();
         if !try_copy_and_wait(VK_INSERT) && !try_copy_and_wait(VK_C) {
             return None;
         }
         // Discard the result if the foreground window changed during capture.
-        if crate::source::frontmost_pid() != Some(pid) {
+        if crate::source::foreground_target() != Some(target) {
             return None;
         }
-        let copied = with_clipboard(read_text).flatten().filter(|text| !text.is_empty());
+        let copied = with_clipboard(None, read_text)
+            .flatten()
+            .filter(|text| !text.is_empty());
         let text = copied?;
         let text = String::from_utf16_lossy(&text).trim().to_string();
         (!text.is_empty()).then_some(CurrentSelection {
             text,
             html: None,
-            source_pid: pid,
+            source_pid: target.pid,
             anchor: None,
             method: SelectionMethod::Clipboard,
         })
@@ -518,20 +740,16 @@ mod windows_capture {
         use super::*;
 
         #[test]
-        fn memory_backed_text_and_rich_formats_are_backupable() {
-            // CF_UNICODETEXT, CF_HDROP, CF_LOCALE, CF_DIB, CF_DIBV5
-            for format in [13, 15, 16, 8, 17] {
-                assert!(backupable(format), "format {format} should be backupable");
-            }
+        fn synthesized_image_formats_are_skipped_when_dib_is_available() {
+            let formats = [CF_DIB, CF_BITMAP, CF_PALETTE];
+            assert!(!synthesized_format(CF_DIB, &formats));
+            assert!(synthesized_format(CF_BITMAP, &formats));
+            assert!(synthesized_format(CF_PALETTE, &formats));
         }
 
         #[test]
-        fn gdi_render_only_and_private_formats_abandon_the_fallback() {
+        fn non_restorable_formats_abandon_the_fallback() {
             for format in [
-                CF_BITMAP,
-                CF_METAFILEPICT,
-                CF_PALETTE,
-                CF_ENHMETAFILE,
                 CF_OWNERDISPLAY,
                 CF_DSPTEXT,
                 CF_DSPBITMAP,
@@ -539,9 +757,42 @@ mod windows_capture {
                 CF_DSPENHMETAFILE,
                 CF_PRIVATEFIRST,
                 CF_PRIVATELAST,
+                CF_GDIOBJFIRST,
+                CF_GDIOBJLAST,
             ] {
-                assert!(!backupable(format), "format {format} must not be backupable");
+                assert!(
+                    unsupported_format(format),
+                    "format {format} must be rejected"
+                );
             }
+        }
+
+        #[test]
+        fn copy_plan_preserves_preexisting_modifiers_without_adding_shift_or_alt() {
+            assert_eq!(
+                copy_key_plan(VK_C, true, true, true),
+                [
+                    (VK_MENU, true),
+                    (VK_SHIFT, true),
+                    (VK_C, false),
+                    (VK_C, true),
+                    (VK_SHIFT, false),
+                    (VK_MENU, false),
+                ]
+            );
+        }
+
+        #[test]
+        fn copy_plan_owns_control_only_when_user_did_not_hold_it() {
+            assert_eq!(
+                copy_key_plan(VK_INSERT, false, false, false),
+                [
+                    (VK_CONTROL, false),
+                    (VK_INSERT, false),
+                    (VK_INSERT, true),
+                    (VK_CONTROL, true),
+                ]
+            );
         }
     }
 }

@@ -41,6 +41,14 @@ pub struct QuotePayload {
     pub source: Option<Source>,
 }
 
+/// Stable identity of the foreground capture target. Windows needs both
+/// process and window identity because one process may own multiple windows.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct ForegroundTarget {
+    pub pid: i32,
+    pub window_id: Option<usize>,
+}
+
 /// Capture the source of the current selection. `app` is used only to emit the
 /// `automation-needed` hint when the frontmost app is a known browser but the
 /// tab-URL osascript fails (macOS Automation not granted / denied / timed out);
@@ -90,6 +98,25 @@ pub fn capture_source(_app: &tauri::AppHandle) -> Option<Source> {
     }
     #[cfg(not(target_os = "windows"))]
     None
+}
+
+pub(crate) fn capture_source_for_pid(app: &tauri::AppHandle, pid: i32) -> Option<Source> {
+    #[cfg(target_os = "windows")]
+    {
+        let _ = app;
+        return Some(Source {
+            kind: SourceKind::App,
+            title: windows_app_name(pid),
+            url: None,
+            bundle_id: Some(format!("windows:{pid}")),
+        });
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        (frontmost_pid() == Some(pid))
+            .then(|| capture_source(app))
+            .flatten()
+    }
 }
 
 /// Return the colored app icon for `bundle_id` as a `data:image/png;base64,…`
@@ -236,6 +263,15 @@ pub fn frontmost_pid() -> Option<i32> {
 pub fn frontmost_pid() -> Option<i32> {
     #[cfg(target_os = "windows")]
     {
+        return foreground_target().map(|target| target.pid);
+    }
+    #[cfg(not(target_os = "windows"))]
+    None
+}
+
+pub(crate) fn foreground_target() -> Option<ForegroundTarget> {
+    #[cfg(target_os = "windows")]
+    {
         use windows_sys::Win32::UI::WindowsAndMessaging::{
             GetForegroundWindow, GetWindowThreadProcessId,
         };
@@ -245,10 +281,18 @@ pub fn frontmost_pid() -> Option<i32> {
         }
         let mut pid = 0;
         unsafe { GetWindowThreadProcessId(window, &mut pid) };
-        return (pid != 0).then_some(pid as i32);
+        return (pid != 0).then_some(ForegroundTarget {
+            pid: pid as i32,
+            window_id: Some(window as usize),
+        });
     }
     #[cfg(not(target_os = "windows"))]
-    None
+    {
+        frontmost_pid().map(|pid| ForegroundTarget {
+            pid,
+            window_id: None,
+        })
+    }
 }
 
 #[cfg(target_os = "windows")]
@@ -264,9 +308,8 @@ fn windows_app_name(pid: i32) -> String {
     if !process.is_null() {
         let mut buffer = vec![0u16; 1024];
         let mut length = buffer.len() as u32;
-        let ok = unsafe {
-            QueryFullProcessImageNameW(process, 0, buffer.as_mut_ptr(), &mut length)
-        };
+        let ok =
+            unsafe { QueryFullProcessImageNameW(process, 0, buffer.as_mut_ptr(), &mut length) };
         unsafe { CloseHandle(process) };
         if ok != 0 {
             let path = OsString::from_wide(&buffer[..length as usize]);

@@ -24,6 +24,10 @@ CSP 在 `src-tauri/tauri.conf.json` 中限制脚本、连接、图片和字体�
 
 macOS 划词需要 Accessibility 权限。全局 event tap 是 listen-only，并运行在
 Tauri 主 RunLoop 之外，不能消费用户输入。自动、弹窗快捷键和直接采集入口在
-读取 AX 或剪贴板前都会拒绝 FloatNote 自身 PID；剪贴板兜底仅定向发送给当前
-外部前台 PID。捕获后以 current-host-only 语义恢复每个可读取的 pasteboard
-item/type。捕获期间前台 PID 改变或切回 FloatNote 时结果会被丢弃。
+读取 AX 或剪贴板前都会拒绝 FloatNote 自身 PID；macOS 剪贴板兜底仅定向发送给
+当前外部前台 PID，并以 current-host-only 语义恢复每个可读取的 pasteboard
+item/type。Windows 自动捕获从鼠标按下到读取结果始终绑定同一 PID+HWND；复制前
+完整验证剪贴板枚举并预分配恢复句柄，跳过可合成表示，增强型图元文件使用专用
+GDI 序列化路径；恢复阶段以 FloatNote 主窗口 HWND 取得剪贴板所有权，不使用
+`OpenClipboard(NULL)`。用户按住的 Shift/Alt 会在复制组合键期间临时释放并恢复，原本按住
+的 Ctrl 不由捕获流程释放。捕获期间目标身份改变或切回 FloatNote 时结果会被丢弃。

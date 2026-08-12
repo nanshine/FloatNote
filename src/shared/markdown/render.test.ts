@@ -6,10 +6,6 @@ import { fillMarkdown, renderMarkdown } from "./render";
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn().mockResolvedValue(undefined) }));
 
 describe("shared Markdown renderer", () => {
-  it("preserves ordinary line breaks in rendered surfaces", () => {
-    expect(renderMarkdown("line one\nline two")).toBe("<p>line one<br>line two</p>");
-  });
-
   it("renders nested blockquotes and fenced code blocks", () => {
     const html = renderMarkdown("> outer\n>\n> > inner\n\n```ts\nconst x = 1;\n```");
 

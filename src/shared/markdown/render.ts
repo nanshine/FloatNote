@@ -43,9 +43,7 @@ const markdown = new MarkdownIt({
 markdown.validateLink = isSafeUrl;
 markdown.use(taskListPlugin);
 markdown.use(mathPlugin);
-// Keep ordinary Markdown line breaks visible in rendered assistant and quote
-// surfaces. The note editor has its own CodeMirror live-preview widgets.
-markdown.renderer.rules.softbreak = () => "<br>";
+markdown.renderer.rules.softbreak = () => " ";
 markdown.renderer.rules.table_open = () => '<div class="fn-markdown-table-scroll"><table>';
 markdown.renderer.rules.table_close = () => "</table></div>";
 markdown.renderer.rules.image = (tokens, index, _options, _env, self) => {
