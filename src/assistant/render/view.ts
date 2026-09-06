@@ -1,6 +1,6 @@
 import { processGroupSummary, type Block, type ChatMessage } from "./state";
 import { buildActionCard } from "../action-card";
-import { fillMarkdown } from "../markdown";
+import { fillMarkdown } from "../../shared/markdown/render";
 import { createIcon } from "../../shared/ui/icon";
 import { parseSelectionMessage } from "../../platform/selection-message";
 import { wireOpenUrlLink } from "../../platform/open-url";

@@ -14,7 +14,7 @@
   --settings-row-padding: 14px 16px;
 }
 
-/* ── Scrollbar thumb (generalized from `src/note/scrollbar.ts`) ──
+/* ── Shared scrollbar thumb ──
    Replaces the note-only `.scroll-thumb` rule previously in `src/styles.css`. */
 .fn-scroll__thumb {
   position: absolute;
@@ -25,11 +25,21 @@
   background: rgba(0, 0, 0, 0.22);
   opacity: 0;
   transition: opacity 0.35s var(--ease-standard);
+  cursor: default;
   pointer-events: none;
+  touch-action: none;
+  user-select: none;
   z-index: 10;
 }
 .fn-scroll__thumb.is-visible {
   opacity: 1;
+  cursor: grab;
+  pointer-events: auto;
+}
+.fn-scroll__thumb.is-dragging {
+  cursor: grabbing;
+  opacity: 1;
+  transition: none;
 }
 @media (prefers-color-scheme: dark) {
   .fn-scroll__thumb {

@@ -9,8 +9,8 @@
  * The DOM wiring is trivial and covered by手测; the string shape is covered by
  * `empty-state.test.ts`, matching the repo's all-pure test style.
  *
- * Promoted from `src/note/empty-state.ts` (now a re-export) so all windows can
- * use the same `.fn-empty*` contract from `components.css`.
+ * All callers import this shared module directly and use the same `.fn-empty*`
+ * contract from `components.css`.
  */
 
 import { escapeHtml } from "../escape";

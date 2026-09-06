@@ -18,6 +18,14 @@
 
 文件系统删除测试在无 Finder/桌面会话的 CI 或沙箱中应使用可替换的 trash adapter；不要把 OS 自动化失败误判为领域逻辑回归。
 
+Markdown 内核改动必须扩充结构化黄金语料并验证语义往返，而不是比较字节：至少覆盖
+嵌套/非 1 起始列表、任务项、列表后的段落、列表内公式、代码块语言、GFM 表格、
+图片属性、`[!quote]` 卡、CRLF、中文及无法识别的输入。Inbox 还必须覆盖重叠 mark、
+格式编辑后的 offset 重建、损坏 metadata 只读保护；composer 必须覆盖 IME、候选优先级、
+结构化引用剪贴板和提交失败保留草稿。浏览器回归重点检查列表后首行、公式基线、
+光标/选区、空文档留白点击与 placeholder、标签筛选投影的挂载层级、可拖动滚动条、
+折叠与 macOS/Windows WebView 布局差异。
+
 ## 本地 CI 分层
 
 开发中可先运行受影响的单测；Agent 或开发者准备声明改动完成时，从仓库根目录运行：
@@ -38,7 +46,7 @@ npm run release:check -- --tag v0.2.0
 
 ## 浏览器 UI 回归
 
-`npm run review:ui` 自动启动或复用 Vite，再由 WebdriverIO browser mode 驱动托管的 Chrome。`tests/review/browser/assistant-fixture.ts` 直接挂载生产 `mountAssistant` 和生产 CSS，只在 Tauri IPC 边界使用 browser-mode mock；不复制组件实现，也不需要 Tauri binary 或 `.app`。
+`npm run review:ui` 自动启动或复用 Vite，再由 WebdriverIO browser mode 驱动托管的 Chrome。`tests/review/browser/assistant-fixture.ts` 直接挂载生产 `mountAssistant` 和生产 CSS；`note-surfaces-fixture.ts` 直接创建生产 Inbox/Piece 编辑器，验证空白底部点击、焦点 chrome、字体/间距、`---` 分隔线一致性与长文档滚动。fixture 不复制组件实现，也不需要 Tauri binary 或 `.app`。
 
 - spec 位于 `tests/review/browser/`，配置见 `wdio.browser.conf.ts`；失败截图写入 `artifacts/browser-review/`。
 - 适合验证 DOM、计算样式、焦点、动画前后状态和前端 IPC 参数；不用于证明 Rust、真实 webview 或系统窗口行为。

@@ -4,8 +4,9 @@ import { resolve } from "node:path";
 
 const css = readFileSync(resolve(process.cwd(), "src/styles.css"), "utf8");
 const noteAppSource = readFileSync(resolve(process.cwd(), "src/note/note-app.ts"), "utf8");
-const editorSource = readFileSync(resolve(process.cwd(), "src/note/editor.ts"), "utf8");
-const annotationDecorationSource = readFileSync(resolve(process.cwd(), "src/note/annotations/decoration.ts"), "utf8");
+const editorCss = readFileSync(resolve(process.cwd(), "src/shared/markdown/structured-editor.css"), "utf8");
+const editorSource = readFileSync(resolve(process.cwd(), "src/shared/markdown/structured-editor.ts"), "utf8");
+const editorPlugins = readFileSync(resolve(process.cwd(), "src/shared/markdown/milkdown-plugins.ts"), "utf8");
 const pieceSwitcherSource = readFileSync(resolve(process.cwd(), "src/note/piece-switcher.ts"), "utf8");
 const assistantCss = readFileSync(resolve(process.cwd(), "src/assistant/styles.css"), "utf8");
 const semanticCss = readFileSync(resolve(process.cwd(), "src/styles/semantic.css"), "utf8");
@@ -37,33 +38,31 @@ describe("split view CSS placement", () => {
     expect(css).toMatch(
       /#piece-scroll\s*{[^}]*display:\s*flex;[^}]*flex-direction:\s*column;[^}]*flex:\s*1 1 auto;/s,
     );
-    expect(css).toMatch(
-      /#piece-editor-root\s*{[^}]*position:\s*relative;[^}]*flex:\s*1 1 auto;[^}]*min-height:\s*0;/s,
-    );
+    expect(noteAppSource).toContain('id="piece-editor-root" class="note-editor-host"');
+    expect(css).toMatch(/\.note-editor-host\s*{[^}]*position:\s*relative;[^}]*min-height:\s*0;[^}]*flex:\s*1 1 auto;/s);
   });
 
-  it("aligns the writing title with editor content and leaves selection rendering to CodeMirror", () => {
+  it("aligns the writing title with structured editor content", () => {
     expect(css).toMatch(/#piece-doc-header\s*{[^}]*padding-left:\s*var\(--piece-content-inset\);/s);
     expect(css).toMatch(
       /\.piece-title-input\s*{[^}]*font-size:\s*calc\(var\(--editor-font,\s*15px\)\s*\+\s*11px\);/s,
     );
-    expect(editorSource).toContain('padding: "16px var(--piece-content-inset, 0px)"');
-    expect(editorSource).toContain("drawSelection({ cursorBlinkRate: 1200 })");
+    expect(editorCss).toMatch(/\.fn-note-structured-editor > \.editor\s*\{[^}]*padding:\s*16px 0;/s);
+    expect(editorSource).toContain("createStructuredMarkdownEditor");
     expect(css).not.toContain(".cm-selected-line-break");
   });
 
   it("removes the Inbox block gutter and handle surface", () => {
-    expect(editorSource).toMatch(/padding:\s*"16px 0"/);
+    expect(editorCss).toMatch(/padding:\s*16px 0/);
     expect(css).not.toContain(".cm-block-handle");
     expect(css).not.toContain(".cm-block-gutter");
     expect(noteAppSource).not.toContain("blockHandleGutter");
   });
 
   it("renders inline annotations without visible tag chips in body text", () => {
-    expect(css).toMatch(/\.cm-inline-annotation\s*{/s);
-    expect(annotationDecorationSource).toContain("background-image");
-    expect(annotationDecorationSource).toContain("aria-label");
-    expect(annotationDecorationSource).not.toContain("title:");
+    expect(editorCss).toMatch(/\.fn-inline-annotation\s*{/s);
+    expect(editorPlugins).toContain('aria-label": `已标注');
+    expect(editorPlugins).toContain('excludes: ""');
   });
 
   it("expands top tag discs into label chips on hover or active state without a selection ring", () => {
@@ -81,7 +80,7 @@ describe("split view CSS placement", () => {
 
   it("lets the tag control bar span the full note body instead of the centered text column", () => {
     const tagBar = css.match(/\.tag-bar\s*{([^}]*)}/s)?.[1] ?? "";
-    expect(noteAppSource).toMatch(/<div id="tag-bar-root"><\/div>[\s\S]*<div id="text-col">/);
+    expect(noteAppSource).toMatch(/<div id="tag-bar-root"><\/div>[\s\S]*<div id="text-col" class="note-column">/);
     expect(noteAppSource).toMatch(/#tag-bar-root/);
     expect(tagBar).not.toMatch(/margin-left:\s*calc\(-1 \* var\(--left\)\);/);
     expect(tagBar).not.toMatch(/width:\s*calc\(100% \+ var\(--left\) \+ var\(--right\)\);/);
@@ -93,9 +92,77 @@ describe("split view CSS placement", () => {
 
   it("renders filtered results in a separate read-only segmented projection", () => {
     expect(noteAppSource).toContain('id="annotation-projection-root"');
+    expect(noteAppSource).toMatch(/<div id="editor-root" class="note-scroll note-editor-host">\s*<div id="annotation-projection-root" hidden><\/div>\s*<\/div>/);
     expect(css).toMatch(/\.annotation-projection-item\s*{/s);
     expect(css).toMatch(/#annotation-projection-root\[hidden\]\s*{[^}]*display:\s*none;/s);
     expect(css).toMatch(/\.tag-readonly-hint\s*{[^}]*margin-left:\s*auto;/s);
+  });
+
+  it("fills empty structured editors and renders their ProseMirror-aware placeholders", () => {
+    expect(editorCss).toMatch(/\.fn-structured-editor\s*{[^}]*display:\s*flex;[^}]*flex-direction:\s*column;/s);
+    expect(editorCss).toMatch(/\.fn-note-structured-editor\s*{[^}]*height:\s*100%;[^}]*min-height:\s*100%;/s);
+    expect(editorCss).toMatch(/\.fn-note-structured-editor > \.editor\s*{[^}]*flex:\s*1 1 auto;/s);
+    expect(editorCss).toMatch(/\.fn-structured-editor > \.editor > \.fn-empty-paragraph\s*{[^}]*position:\s*relative;/s);
+    expect(editorCss).toMatch(
+      /\.fn-structured-editor > \.editor > \.fn-empty-paragraph::before\s*{[^}]*position:\s*absolute;[^}]*top:\s*0;[^}]*inset-inline-start:\s*0;[^}]*line-height:\s*inherit;/s,
+    );
+    expect(editorSource).toContain('class: "fn-empty-paragraph"');
+    expect(editorSource).toContain('options.parent.addEventListener("pointerdown", focusFromHostWhitespace)');
+  });
+
+  it("uses one note body surface instead of inbox and piece style forks", () => {
+    expect(editorSource).toContain('noteSurface ? "fn-note-structured-editor" : ""');
+    expect(editorSource).toContain("ctx.set(rootAttrsCtx");
+    expect(noteAppSource).not.toContain("fn-piece-structured-editor");
+    expect(noteAppSource).not.toContain("fn-inbox-structured-editor");
+    expect(editorCss).not.toContain(".fn-inbox-structured-editor");
+    expect(editorCss).not.toContain(".fn-piece-structured-editor");
+    expect(editorCss).toMatch(/\.fn-structured-editor\s*{[^}]*font-family:\s*var\(--font-sans\);/s);
+  });
+
+  it("shows list disclosure controls only for items that actually contain a nested list", () => {
+    expect(editorCss).toMatch(/\.fn-structured-editor \.fn-list-fold-toggle\[hidden\]\s*{[^}]*display:\s*none;/s);
+  });
+
+  it("reserves separate list gutters for disclosure controls and multi-digit markers", () => {
+    expect(editorCss).toMatch(
+      /\.fn-structured-editor ol,\s*\.fn-structured-editor ul\s*\{[^}]*--fn-list-indent:\s*3\.2em;[^}]*padding-inline-start:\s*var\(--fn-list-indent\);/s,
+    );
+    expect(editorCss).toMatch(
+      /\.fn-structured-editor \.fn-list-fold-toggle\s*\{[^}]*inset-inline-start:\s*calc\(-1 \* var\(--fn-list-indent\) \+ 0\.3em\);/s,
+    );
+    expect(editorCss).toMatch(
+      /\.fn-structured-editor li > \.fn-list-item-content > ol,\s*\.fn-structured-editor li > \.fn-list-item-content > ul\s*\{[^}]*margin-inline-start:\s*-1em;/s,
+    );
+  });
+
+  it("keeps dividers and blockquotes on semantic theme colors", () => {
+    expect(editorCss).toMatch(/\.fn-structured-divider hr\s*{[^}]*height:\s*1px;[^}]*background:\s*var\(--color-divider\);/s);
+    expect(editorCss).toMatch(/\.fn-structured-editor blockquote\s*{[^}]*border-left:[^}]*var\(--color-border-strong\);[^}]*background:/s);
+  });
+
+  it("keeps special-block selection thin, contained and consistently rounded", () => {
+    expect(editorCss).toMatch(/\.fn-structured-editor \.ProseMirror-selectednode[^}]*outline:\s*1px solid[^}]*outline-offset:\s*-1px;/s);
+    expect(editorCss).toMatch(/\.fn-structured-editor blockquote\s*{[^}]*border-radius:\s*6px;/s);
+    expect(editorCss).toMatch(/\.fn-structured-editor \.fn-quote-card\s*{[^}]*border-radius:\s*8px;/s);
+    expect(editorCss).toMatch(/\.fn-structured-divider\s*{[^}]*min-height:\s*16px;/s);
+  });
+
+  it("keeps inline field carets native and gives the code-language caret enough height", () => {
+    expect(editorCss).toMatch(/\.fn-quote-card__source-input:focus-visible\s*{[^}]*outline:\s*none;[^}]*box-shadow:\s*none;/s);
+    expect(editorCss).toMatch(/\.fn-quote-card__source-input:focus-visible\s*{[^}]*caret-color:\s*auto;/s);
+    expect(editorCss).toMatch(/\.fn-structured-codeblock__language\s*{[^}]*height:\s*20px;[^}]*padding:\s*2px 0;[^}]*border-radius:\s*0;[^}]*font:\s*0\.8em\/16px[^}]*caret-color:\s*auto;/s);
+    expect(editorCss).toMatch(/\.fn-structured-codeblock__language:focus-visible\s*{[^}]*outline:\s*none;[^}]*box-shadow:\s*none;[^}]*caret-color:\s*auto;/s);
+    expect(editorCss).not.toMatch(/caret-color:\s*var\(--color-accent\)/);
+  });
+
+  it("shares column, scrollport and area-bar layout rules", () => {
+    expect(noteAppSource).toContain('id="text-col" class="note-column"');
+    expect(noteAppSource).toContain('id="piece-col" class="note-column"');
+    expect(noteAppSource).toContain('id="editor-root" class="note-scroll note-editor-host"');
+    expect(noteAppSource).toContain('id="piece-scroll" class="note-scroll"');
+    expect(css).toMatch(/\.note-scroll\s*{[^}]*overflow-x:\s*hidden;[^}]*overflow-y:\s*auto;[^}]*background:\s*var\(--color-surface\);/s);
+    expect(css).toMatch(/#piece-topbar-root,\s*\.tag-bar\s*{[^}]*padding:\s*6px 14px;[^}]*border-bottom:\s*1px solid var\(--color-divider\);/s);
   });
 
   it("gives the floating assistant a soft background without bubble borders", () => {

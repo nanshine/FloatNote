@@ -13,7 +13,8 @@ WebView → src/platform → Tauri command → Rust domain
 前端自动保存与直接编辑经 Tauri command 到 Rust `notes`。Rust 执行 mtime 冲突校验、原子写入和 watcher 自写抑制。sidecar 的写入请求不会直接触及文件系统：Pi hook 先 prepare/review，Rust 发放一次性 lease；工具执行时 Rust 再 stale-check 并原子提交，随后广播 `note://updated`。
 
 Inbox 的 v2 metadata 编解码只发生在 frontend/sidecar 的共享纯逻辑边界；
-CodeMirror 与 Agent 都消费 clean Markdown offsets，Rust host 继续传递并持久化不透明
+ProseMirror annotation marks 通过 serializer source alignment 投影回 clean Markdown
+offsets，Agent 继续消费同一 clean 坐标；Rust host 继续传递并持久化不透明
 字符串。metadata 不进入可编辑文档，也没有数据库或第二个 metadata 文件。
 
 ## AI 对话

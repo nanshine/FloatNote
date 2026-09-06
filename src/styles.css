@@ -72,9 +72,7 @@ body {
   min-width: 0;
 }
 
-#text-col {
-  grid-column: 2;
-  grid-row: 2;
+.note-column {
   position: relative;
   min-width: 0;
   min-height: 0;
@@ -83,14 +81,14 @@ body {
   flex-direction: column;
 }
 
+#text-col {
+  grid-column: 2;
+  grid-row: 2;
+}
+
 #piece-col {
   grid-row: 2;
-  position: relative;
-  min-width: 0;
-  min-height: 0;
-  height: 100%;
   display: none;
-  flex-direction: column;
 }
 
 /* 双栏分隔线：落在两栏之间 gap 的正中（gap=24，故偏移半个 gap）。 */
@@ -341,24 +339,23 @@ body {
   background: var(--color-hover) !important;
 }
 
-#editor-root {
+.note-editor-host {
   position: relative;
   min-width: 0;
   min-height: 0;
   flex: 1 1 auto;
-  overflow: visible;
-  /* 阅读面只比窗口底色略亮：保留内容层级，同时避免明显的深色竖向色带。 */
+}
+
+.note-scroll {
+  position: relative;
+  overflow-x: hidden;
+  overflow-y: auto;
   background: var(--color-surface);
 }
 
-.cm-scroller {
-  position: relative;
-}
-
-.cm-scroller::-webkit-scrollbar {
+.note-scroll::-webkit-scrollbar {
   display: none;
 }
-
 
 /* Scrollbar thumb now lives in src/styles/components.css (.fn-scroll__thumb),
    driven by src/shared/ui/scrollbar.ts. */
@@ -856,17 +853,10 @@ body {
 /* 写作栏的单一滚动容器：文档头（breadcrumb + 标题）与正文同处其中、一起滚。 */
 #piece-scroll {
   --piece-content-inset: 2px;
-  position: relative;
   display: flex;
   flex-direction: column;
   flex: 1 1 auto;
   min-height: 0;
-  overflow: auto;
-  background: var(--color-surface);
-}
-
-#piece-scroll::-webkit-scrollbar {
-  display: none;
 }
 
 /* 文档头：左对齐，左缘与正文对齐。 */
@@ -1009,12 +999,6 @@ body {
 }
 
 /* 成品编辑器：长到内容高度（不内部滚动），由 #piece-scroll 统一滚。 */
-#piece-editor-root {
-  position: relative;
-  flex: 1 1 auto;
-  min-height: 0;
-}
-
 /* 单栏显示成品：把成品编辑器覆盖到 text-col 上（inbox 藏） */
 #app.show-piece:not(.split-active) #editor-root {
   display: none !important;
@@ -1346,64 +1330,6 @@ body {
 .tasks-input:focus {
   border-color: var(--color-accent);
 }
-/* ── Quote card (`> [!quote]`) ──────────────────────────────────────────── */
-.cm-quote-card-line {
-  background: var(--color-surface-3);
-  border-left: 3px solid var(--color-border-strong);
-  padding-left: 10px;
-}
-.cm-quote-card-first {
-  border-top-left-radius: 8px;
-  border-top-right-radius: 8px;
-}
-.cm-quote-card-last {
-  border-bottom-left-radius: 8px;
-  border-bottom-right-radius: 8px;
-}
-.cm-quote-card-chips {
-  font-size: 12px;
-  color: var(--color-text-muted);
-  display: inline-flex;
-  align-items: center;
-  max-width: 100%;
-  min-width: 0;
-}
-.cm-quote-card-icon {
-  width: 14px;
-  height: 14px;
-  flex: none;
-  margin-right: 4px;
-  vertical-align: middle;
-  border-radius: 3px;
-}
-.cm-quote-card-sep {
-  margin: 0 4px;
-  color: var(--color-text-subtle);
-}
-.cm-quote-card-app {
-  color: var(--color-text-muted);
-  max-width: 170px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  display: inline-block;
-  vertical-align: middle;
-}
-.cm-quote-card-link {
-  color: var(--color-accent);
-  text-decoration: none;
-  max-width: 170px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  display: inline-block;
-  vertical-align: middle;
-  cursor: pointer;
-  transition: opacity 150ms ease;
-}
-.cm-quote-card-link:hover {
-  opacity: 0.7;
-}
 /* ── Inline annotations (采集区文本标注) ─────────────────────────────── */
 #tag-bar-root {
   grid-column: 1 / -1;
@@ -1420,128 +1346,27 @@ body {
 /* 写作顶栏：固定在 #note-body 顶行（不随正文滚动），承载 breadcrumb / 版本 / 删除
    与模式切换预留位。默认隐藏，由 show-piece（单栏写作）/ split-active（双栏）显隐。
    纵向节奏与 .tag-bar 一致（同高 padding + 底分隔线）。 */
-#piece-topbar-root {
-  grid-row: 1;
-  display: none;
-  min-width: 0;
+#piece-topbar-root,
+.tag-bar {
   align-items: center;
   gap: 8px;
-  padding-top: 6px;
-  padding-right: 14px;
-  padding-bottom: 6px;
-  padding-left: 14px;
+  padding: 6px 14px;
   border-bottom: 1px solid var(--color-divider);
   background: var(--color-surface);
   -webkit-user-select: none;
   user-select: none;
 }
 
-/* 多级列表的 1.5em 一级缩进由 CodeMirror preview theme 统一提供；源码缩进
-   再叠加到每一级。Chevron 的 20px 回拉量小于该缩进，
-   因而最左侧始终落在正文起点右侧，不会侵入 14px 的拖拽 gutter。 */
-.cm-list-fold-toggle {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 18px;
-  min-width: 18px;
-  height: 18px;
-  /* -20 + 18 + 2 = 0：chevron 不改变父节点标记的原始基线。 */
-  margin: 0 2px 0 -20px;
-  padding: 0;
-  border: none;
-  background: transparent;
-  color: var(--color-text-subtle);
-  line-height: 1;
-  cursor: pointer;
-  vertical-align: middle;
-  overflow: hidden;
+#piece-topbar-root {
+  grid-row: 1;
+  display: none;
+  min-width: 0;
 }
-.cm-list-fold-chevron {
-  display: block;
-  transform: translateY(-0.5px);
-  font-size: 18px;
-  font-weight: 600;
-  line-height: 12px;
-  transition: transform 120ms ease;
-}
-.cm-list-fold-toggle:not(.cm-list-fold-toggle-folded) .cm-list-fold-chevron {
-  transform: translateY(-0.5px) rotate(90deg);
-}
-.cm-list-leaf-dot {
-  display: inline-block;
-  box-sizing: border-box;
-  width: 9px;
-  height: 9px;
-  border: 1.25px solid currentColor;
-  border-radius: 50%;
-  vertical-align: middle;
-}
-.cm-list-leaf-dot {
-  margin: 0 5px 0 2px;
-  color: var(--color-text-subtle);
-}
-.cm-list-fold-marker {
-  position: relative;
-  isolation: isolate;
-  cursor: pointer;
-}
-.cm-list-leaf-dot.cm-list-fold-marker {
-  background: currentColor;
-}
-.cm-list-fold-marker::before,
-.cm-preview-ol-number::before {
-  content: "";
-  position: absolute;
-  z-index: -1;
-  left: 50%;
-  top: 50%;
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  background: var(--color-hover);
-  opacity: 0;
-  transform: translate(-50%, -50%);
-  transition: opacity 120ms ease;
-  pointer-events: none;
-}
-.cm-preview-ol-number {
-  position: relative;
-  display: inline-block;
-  isolation: isolate;
-}
-.cm-list-fold-toggle:hover {
-  color: var(--color-accent);
-}
-.cm-list-fold-toggle-folded {
-  color: var(--color-accent);
-}
-.cm-list-fold-marker:is(:hover, .cm-list-fold-marker-folded) {
-  color: var(--color-accent);
-}
-.cm-list-leaf-dot.cm-list-fold-marker:is(:hover, .cm-list-fold-marker-folded)::before,
-.cm-preview-ol-mark.cm-list-fold-marker:is(:hover, .cm-list-fold-marker-folded) .cm-preview-ol-number::before {
-  opacity: 1;
-}
-.cm-list-fold-toggle:focus-visible {
-  outline: 2px solid var(--color-accent);
-  outline-offset: 1px;
-  border-radius: 50%;
-}
+
 .tag-bar {
   display: flex;
-  align-items: center;
-  gap: 8px;
   width: 100%;
   max-height: 42px;
-  padding-top: 6px;
-  padding-right: 14px;
-  padding-bottom: 6px;
-  padding-left: 14px;
-  border-bottom: 1px solid var(--color-divider);
-  background: var(--color-surface);
-  -webkit-user-select: none;
-  user-select: none;
   flex: 0 0 auto;
   z-index: 2;
   overflow: hidden;
@@ -1658,16 +1483,8 @@ body {
   flex: 0 0 auto;
 }
 
-.cm-inline-annotation {
-  border-radius: 2px;
-  box-decoration-break: clone;
-  -webkit-box-decoration-break: clone;
-}
-
 #annotation-projection-root {
-  flex: 1 1 auto;
   min-height: 0;
-  overflow: auto;
   padding: 12px 0 24px;
 }
 

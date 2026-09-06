@@ -1,8 +1,5 @@
 import katex from "katex";
 import "katex/dist/katex.min.css";
-import type MarkdownIt from "markdown-it";
-import type StateInline from "markdown-it/lib/rules_inline/state_inline.mjs";
-import type StateBlock from "markdown-it/lib/rules_block/state_block.mjs";
 import { escapeHtml } from "../escape";
 
 const renderOptions = {
@@ -115,67 +112,4 @@ export function renderMath(expression: string, displayMode: boolean): string {
     const delimiter = displayMode ? "$$" : "$";
     return `<span class="fn-math-error" title="公式语法无效">${escapeHtml(`${delimiter}${expression}${delimiter}`)}</span>`;
   }
-}
-
-function inlineMathRule(state: StateInline, silent: boolean): boolean {
-  const start = state.pos as number;
-  const source = state.src as string;
-  if (source[start] !== "$" || source[start + 1] === "$" || /\s/u.test(source[start + 1] ?? "")) {
-    return false;
-  }
-
-  let end = start + 1;
-  while (end < state.posMax) {
-    end = source.indexOf("$", end);
-    if (end < 0 || end >= state.posMax) return false;
-    if (!isEscaped(source, end)) break;
-    end += 1;
-  }
-
-  const expression = source.slice(start + 1, end);
-  const after = source[end + 1] ?? "";
-  if (!expression || /\n/u.test(expression) || /\s$/u.test(expression) || /\d/u.test(after)) return false;
-
-  if (!silent) {
-    const token = state.push("math_inline", "math", 0);
-    token.content = expression;
-    token.markup = "$";
-  }
-  state.pos = end + 1;
-  return true;
-}
-
-function displayMathRule(state: StateBlock, startLine: number, endLine: number, silent: boolean): boolean {
-  const start = state.bMarks[startLine] + state.tShift[startLine];
-  const end = state.eMarks[startLine];
-  if (state.src.slice(start, end).trim() !== "$$") return false;
-
-  let closeLine = startLine + 1;
-  while (closeLine < endLine) {
-    const closeStart = state.bMarks[closeLine] + state.tShift[closeLine];
-    const closeEnd = state.eMarks[closeLine];
-    if (state.src.slice(closeStart, closeEnd).trim() === "$$") break;
-    closeLine += 1;
-  }
-  if (closeLine >= endLine) return false;
-  if (silent) return true;
-
-  const contentStart = state.bMarks[startLine + 1];
-  const contentEnd = state.eMarks[closeLine - 1];
-  const token = state.push("math_block", "math", 0);
-  token.block = true;
-  token.content = state.src.slice(contentStart, contentEnd);
-  token.map = [startLine, closeLine + 1];
-  token.markup = "$$";
-  state.line = closeLine + 1;
-  return true;
-}
-
-export function mathPlugin(md: MarkdownIt): void {
-  md.inline.ruler.before("escape", "floatnote_math_inline", inlineMathRule);
-  md.block.ruler.before("fence", "floatnote_math_block", displayMathRule, {
-    alt: ["paragraph", "reference", "blockquote", "list"],
-  });
-  md.renderer.rules.math_inline = (tokens, index) => renderMath(tokens[index].content, false);
-  md.renderer.rules.math_block = (tokens, index) => renderMath(tokens[index].content, true);
 }

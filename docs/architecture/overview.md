@@ -17,7 +17,8 @@
 - `src/note/`：笔记编辑、项目空间、标签、任务、图片和布局。
 - `src/assistant/`：助手 UI、消息 reducer 与渲染。
 
-旧的 `src/note/agent.ts`、`chat-history.ts`、`chat-history-format.ts`、`inline.ts` 和 `tags/floating.ts` 只作为兼容 re-export；新代码不得从这些路径跨 feature 导入。
+跨 feature 的 agent、chat history、Markdown 和 UI 组件从 `src/platform/` 或
+`src/shared/` 的正式入口直接导入，不在 feature 目录保留转发模块。
 
 ## Rust
 

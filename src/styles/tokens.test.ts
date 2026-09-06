@@ -5,8 +5,8 @@ import { resolve } from "node:path";
 const root = process.cwd();
 
 /** CSS files that should consume design tokens, not raw accent hex literals.
- * `editor.ts` CodeMirror highlighting is intentionally excluded (code-syntax
- * palette is a separate concern). `primitives.css` defines the ramp itself. */
+ * Nested code-editor highlighting is a separate concern. `primitives.css`
+ * defines the ramp itself. */
 const tokenizedCss = [
   "src/styles.css",
   "src/assistant/styles.css",

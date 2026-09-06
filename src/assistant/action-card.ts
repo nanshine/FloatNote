@@ -1,5 +1,5 @@
 import { TOOL_LABEL, type EditPreviewDetail } from "./permission-bubble";
-import { fillMarkdown } from "./markdown";
+import { fillMarkdown } from "../shared/markdown/render";
 import type { Block } from "./render";
 import { escapeHtml } from "../shared/escape";
 import { createButton } from "../shared/ui/button";

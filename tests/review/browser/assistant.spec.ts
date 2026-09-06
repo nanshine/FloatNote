@@ -12,7 +12,7 @@ interface InputChrome {
 
 async function inputChrome(): Promise<InputChrome> {
   return browser.execute(() => {
-    const editor = document.querySelector<HTMLElement>(".fn-assistant-input");
+    const editor = document.querySelector<HTMLElement>(".fn-assistant-structured-editor");
     if (!editor) throw new Error("assistant editor is missing");
     const style = getComputedStyle(editor);
     const rect = editor.getBoundingClientRect();
@@ -35,6 +35,7 @@ function assertVisibleChrome(chrome: InputChrome) {
   assert.equal(chrome.opacity, "1");
   assert.ok(chrome.width >= 180, `input width is only ${chrome.width}px`);
   assert.ok(chrome.height >= 36, `input height is only ${chrome.height}px`);
+  assert.ok(chrome.height <= 40, `compact input grew to ${chrome.height}px`);
 }
 
 describe("assistant input browser review", () => {
@@ -46,21 +47,26 @@ describe("assistant input browser review", () => {
   it("keeps rounded chrome across focus, blur, close and reopen", async () => {
     const bot = await $(".assistant-bot");
     const wrap = await $(".assistant-input-wrap");
-    const editor = await $(".fn-assistant-input");
-    const content = await $(".fn-assistant-input .cm-content");
+    const editor = await $(".fn-assistant-structured-editor");
+    await editor.waitForExist();
+    const content = await $(".fn-assistant-structured-editor .editor");
 
     await bot.click();
     await browser.waitUntil(() => wrap.getAttribute("class").then((value) => value.includes("open")));
     assertVisibleChrome(await inputChrome());
 
     await content.click();
-    await browser.waitUntil(() => editor.getAttribute("class").then((value) => value.includes("cm-focused")));
+    await browser.waitUntil(() => browser.execute(() => (
+      document.querySelector(".fn-assistant-structured-editor")?.contains(document.activeElement) ?? false
+    )));
     const focused = await inputChrome();
     assertVisibleChrome(focused);
     assert.notEqual(focused.boxShadow, "none");
 
     await $("#review-stage").click({ x: 4, y: 4 });
-    await browser.waitUntil(() => editor.getAttribute("class").then((value) => !value.includes("cm-focused")));
+    await browser.waitUntil(() => browser.execute(() => !(
+      document.querySelector(".fn-assistant-structured-editor")?.contains(document.activeElement) ?? false
+    )));
     assertVisibleChrome(await inputChrome());
 
     await bot.click();

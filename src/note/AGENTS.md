@@ -1,37 +1,35 @@
 # src/note — note window
 
-The main note window (CodeMirror 6 editor + inbox/pieces/tasks + assistant).
-Entry: `main.ts` calls `startNoteApp()` in `note-app.ts`. Two CM6 editors
-(inbox + piece) share live preview; Inbox additionally owns range annotations.
+The main note window (Milkdown/ProseMirror editor + inbox/pieces/tasks + assistant).
+Entry: `main.ts` calls async `startNoteApp()` in `note-app.ts`. Inbox and piece/document
+editors share `src/shared/markdown/structured-editor.ts`; Markdown is only the
+load/save/interoperability boundary, while ProseMirror state is authoritative during edits.
 
 ## Module map
 
 - `notes-state.ts` — Tauri call wrappers (read/list/create/rename/delete) +
   per-path debounced save queue (`scheduleSave`/`saveImmediate`/`flushAll`)
   with mtime conflict guard. `loadNote` registers last-known mtime.
-- `editor.ts` — CM6 editor construction, highlight style, insert helpers.
-- `preview/` — live-preview StateField split into `builder.ts`, `widgets.ts`,
-  and `icons.ts`.
+- `structured-inbox.ts` — Inbox v2 metadata ↔ ProseMirror annotation-mark bridge,
+  tag menu/filter projection, quote capture, and encoded autosave snapshots.
+- `structured-media.ts` — structured-editor image paste/native drop adapter.
+- Inbox, piece, and standalone-document bodies receive the same
+  `.fn-note-structured-editor` surface from `structured-editor.ts`; Inbox code may
+  add annotation marks and projections but must not fork body typography, block
+  rendering, focus chrome, or empty-space hit behavior.
 - `tasks-panel.ts` — `_tasks.md` checklist panel (render, mutate, drag-reorder,
   filter). Imports task logic from `./tasks` (migrated from shared).
-- `annotations/` — Inbox clean-projection metadata `StateField`, v2 autosave,
-  inline decoration, selection context menu, and read-only segmented filter
-  projection. `tags/bar.ts` manages definitions and selects the active filter;
-  `tags/palette.ts` re-exports the canonical palette.
+- Annotation definitions and the canonical palette come directly from
+  `@floatnote/note-logic`; they remain plugin/domain state and never become
+  visible Markdown.
 - `piece-switcher.ts`, `seg-switch.ts`, `split.ts`, `layout*.ts`,
   `topbar.ts` — layout/view switching.
-- `image-*.ts` — image drop/resize/toolbar/attrs/fs. Block image widgets carry
-  exact source offsets in DOM data attributes; toolbar writeback must use those
-  offsets and must never infer image identity from caption text.
-- `chat-history.ts` / `chat-history-format.ts` — compatibility re-exports;
-  new callers use `src/platform/chat-history*`.
+- `image-fs.ts` and `image-attrs.ts` retain the filesystem protocol and Markdown
+  attribute codec; structured image node views own caption/width/alignment UI.
 - `recent-projects.ts` — MRU list helpers.
-- `agent.ts` — compatibility re-export; the frontend↔Rust bridge lives in
-  `src/platform/agent.ts`.
-- `append.ts`, `paste.ts`, `quote.ts` (quote-card-specific ranges and minimal
-  append), `table.ts`/`table-keymap.ts`,
-  `list-indent.ts`/`list-keymap.ts`, `markdown-keymap.ts`, `inline.ts`, `empty-state.ts`,
-  `versions.ts`, `window-state.ts`, `shortcuts.ts`, `scrollbar.ts`,
-  — focused editor helpers.
+- `append.ts`, `quote.ts` (quote-card-specific ranges and minimal append),
+  `versions.ts`, `window-state.ts`, and `shortcuts.ts` are focused note-window
+  helpers. Cross-feature agent, chat-history, Markdown, empty-state, and
+  scrollbar code is imported directly from `src/platform/` or `src/shared/`.
 
 Tests: `*.test.ts` next to each module (Vitest, pure-logic style).

@@ -3,31 +3,12 @@ import "../assistant/styles.css";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
-import { onFileChanged, onNoteUpdated, type NoteUpdated } from "./agent";
-import { EditorView, placeholder } from "@codemirror/view";
-import { Transaction } from "@codemirror/state";
+import { onFileChanged, onNoteUpdated, type NoteUpdated } from "../platform/agent";
 import { decodeInbox } from "@floatnote/note-logic";
-import {
-  createEditor,
-  replaceDocWithoutHistory,
-  requestEditorLayout,
-  setDoc,
-  setEditorReadOnly,
-} from "./editor";
-import { mountTagBar } from "./tags/bar";
 import { isImeComposing } from "../shared/keyboard";
 import { showToast } from "../shared/toast";
 import { createIcon } from "../shared/ui/icon";
 import { createMenu, type MenuHandle } from "../shared/ui/menu";
-import { activeTagFilter, tagFilter, setTagFilter } from "./tags/filter";
-import { annotationDecorations } from "./annotations/decoration";
-import { annotationContextMenu } from "./annotations/menu";
-import {
-  inboxMetadataExtension,
-  replaceInboxMetadata,
-} from "./annotations/state";
-import { mountAnnotationProjection } from "./annotations/projection";
-import { annotationAutosave } from "./annotations/autosave";
 import { createLayoutController } from "./layout-controller";
 import { createPieceHeader } from "./piece-switcher";
 import { actionTargetForTransition, createTasksPanel } from "./tasks-panel";
@@ -68,8 +49,8 @@ import {
   type ProjectEntry,
 } from "./notes-state";
 import { parentDir, pushRecent, removeFromRecent } from "./recent-projects";
-import { initScrollbar } from "./scrollbar";
-import { renderEmptyState } from "./empty-state";
+import { initScrollbar } from "../shared/ui/scrollbar";
+import { renderEmptyState } from "../shared/ui/empty-state";
 import {
   resolveBootstrap,
   resolveOpenProject,
@@ -94,7 +75,6 @@ import {
   snapshotNote,
 } from "./versions";
 import { createVersionPreviewState } from "./version-preview";
-import { attachQuoteCapture } from "./quote-capture";
 import { attachAutomationToasts } from "./automation-toasts";
 import { createProjectMenuRenderer, fileManagerRevealLabel } from "./project-menu-render";
 import { createAssistantController } from "./assistant-controller";
@@ -105,9 +85,16 @@ import {
   initializeEditorFontSize,
   resetEditorFontSize,
 } from "./font-size";
+import {
+  createStructuredMarkdownEditor,
+  type StructuredEditorCheckpoint,
+} from "../shared/markdown/structured-editor";
+import { createStructuredInbox } from "./structured-inbox";
+import { imageSrc } from "./image-fs";
+import { attachStructuredMedia } from "./structured-media";
 
 
-export function startNoteApp() {
+export async function startNoteApp() {
 initializeEditorFontSize();
 const app = document.querySelector<HTMLElement>("#app")!;
 app.innerHTML = `
@@ -117,14 +104,15 @@ app.innerHTML = `
     <div id="tag-bar-root"></div>
     <div id="piece-topbar-root"></div>
     <div id="left-col"></div>
-    <div id="text-col">
-      <div id="editor-root"></div>
-      <div id="annotation-projection-root" hidden></div>
+    <div id="text-col" class="note-column">
+      <div id="editor-root" class="note-scroll note-editor-host">
+        <div id="annotation-projection-root" hidden></div>
+      </div>
     </div>
-    <div id="piece-col">
-      <div id="piece-scroll">
+    <div id="piece-col" class="note-column">
+      <div id="piece-scroll" class="note-scroll">
         <div id="piece-doc-header"></div>
-        <div id="piece-editor-root"></div>
+        <div id="piece-editor-root" class="note-editor-host"></div>
       </div>
       <div id="piece-version-preview-root"></div>
       <div id="piece-empty-root"></div>
@@ -135,6 +123,7 @@ app.innerHTML = `
 `;
 
 const noteBody = document.querySelector<HTMLElement>("#note-body")!;
+const textCol = document.querySelector<HTMLElement>("#text-col")!;
 const assistantRegion = document.querySelector<HTMLElement>("#assistant-region")!;
 const bodyEmptyRoot = document.querySelector<HTMLElement>("#body-empty-root")!;
 const pieceEmptyRoot = document.querySelector<HTMLElement>("#piece-empty-root")!;
@@ -231,45 +220,21 @@ let menuAnchor: HTMLElement | null = null;
 let applyingRemote = false;
 
 const editorRoot = document.querySelector<HTMLElement>("#editor-root")!;
-// Inbox 编辑器只持有 clean Markdown；标签、文本标注与 quote 来源 metadata 位于
-// CodeMirror StateField，保存快照时才编码回 `_inbox.md`。
-let tagBar: ReturnType<typeof mountTagBar> | null = null;
-let annotationProjection: ReturnType<typeof mountAnnotationProjection> | null = null;
-const editor = createEditor(
-  editorRoot,
-  () => {},
-  [
-    ...inboxMetadataExtension(),
-    annotationAutosave(
-      (snapshot) => {
-        if (session.currentInbox) scheduleSave(session.currentInbox.entry.path, snapshot);
-      },
-      () => !applyingRemote,
-    ),
-    annotationDecorations(),
-    annotationContextMenu(),
-    ...tagFilter(),
-    placeholder("在这里写点什么…"),
-    EditorView.updateListener.of((u) => {
-      const metadataChanged = u.transactions.some((transaction) => (
-        transaction.effects.some((effect) => effect.is(replaceInboxMetadata))
-      ));
-      if (tagBar && (u.docChanged || metadataChanged ||
-        u.transactions.some((t) => t.effects.some((e) => e.is(setTagFilter))))) {
-        tagBar.refresh();
-        annotationProjection?.refresh();
-      }
-    }),
-  ],
-  { noteDirProvider: () => session.currentProject?.path ?? session.currentStartDir },
-);
 const annotationProjectionRoot = document.querySelector<HTMLElement>("#annotation-projection-root")!;
-annotationProjection = mountAnnotationProjection(annotationProjectionRoot, editor, () => tagBar?.setActive(null));
-// 二级标签栏挂在采集区网格顶行（不在全局顶栏，也不受正文列宽限制）。
-tagBar = mountTagBar(editor, (tagId) => annotationProjection?.setActive(tagId));
-document.querySelector<HTMLElement>("#tag-bar-root")!.appendChild(tagBar.el);
-requestAnimationFrame(() => initScrollbar(editorRoot));
-editor.contentDOM.addEventListener("focus", () => publishInboxActive());
+const structuredInbox = await createStructuredInbox({
+  parent: editorRoot,
+  projectionRoot: annotationProjectionRoot,
+  onFocus: publishInboxActive,
+  onSave: (snapshot) => {
+    if (!applyingRemote && session.currentInbox) scheduleSave(session.currentInbox.entry.path, snapshot);
+  },
+  resolveImageSrc: (url) => imageSrc(url, session.currentProject?.path ?? session.currentStartDir),
+});
+document.querySelector<HTMLElement>("#tag-bar-root")!.appendChild(structuredInbox.tagBar);
+void attachStructuredMedia(structuredInbox.editor, () => session.currentProject?.path ?? session.currentStartDir);
+// The thumb must live outside the scrolling element, otherwise it moves with
+// the document instead of staying in the column gutter.
+requestAnimationFrame(() => initScrollbar(textCol, editorRoot));
 
 // 布局控制器：按窗口宽度分级收缩边距、决定助手嵌入/分离/分屏（init() 里用配置初始化）。
 let layoutController: ReturnType<typeof createLayoutController> | null = null;
@@ -280,47 +245,44 @@ const pieceCol = document.querySelector<HTMLElement>("#piece-col")!;
 const pieceScroll = document.querySelector<HTMLElement>("#piece-scroll")!;
 const versionPreviewRoot = document.querySelector<HTMLElement>("#piece-version-preview-root")!;
 
-
-
-
-
 /** 当前装载进 pieceEditor 的文件（项目模式=成品，文档模式=独立文档）。 */
 function activePieceFile(): NoteEntry | null {
   return session.mode === "document" ? session.currentDocument : session.currentPiece;
 }
 
-// grow:true → 编辑器长到内容高度、不自带内部滚动，于是标题与正文共用 #piece-scroll
-// 这一个外层滚动容器（Notion 式：标题随正文一起滚）。
-const pieceEditor = createEditor(
-  pieceEditorRoot,
-  (doc) => {
+// 共享正文表面铺满可用高度并随内容增长；标题和正文统一由 #piece-scroll 滚动。
+const pieceEditor = await createStructuredMarkdownEditor({
+  parent: pieceEditorRoot,
+  context: {
+    kind: "piece",
+    resolveImageSrc: (url) => imageSrc(url,
+      session.mode === "document" && session.currentDocument
+        ? parentDir(session.currentDocument.path)
+        : (session.currentProject?.path ?? session.currentStartDir)),
+  },
+  placeholder: "开始写…",
+  onChange: (doc) => {
     if (applyingRemote) return;
     const f = activePieceFile();
     if (f) scheduleSave(f.path, doc);
   },
-  [placeholder("开始写…")],
-  {
-    grow: true,
-    // pieceEditor is shared by project piece session.mode AND document session.mode. Branch on
-    // session.mode so document images land next to the document file, not the project dir.
-    noteDirProvider: () =>
-      session.mode === "document" && session.currentDocument
-        ? parentDir(session.currentDocument.path)
-        : (session.currentProject?.path ?? session.currentStartDir),
-  },
-);
+});
 const versionPreview = createVersionPreviewState();
-let versionPreviewEditorState: typeof pieceEditor.state | null = null;
+void attachStructuredMedia(pieceEditor, () =>
+  session.mode === "document" && session.currentDocument
+    ? parentDir(session.currentDocument.path)
+    : (session.currentProject?.path ?? session.currentStartDir));
+let versionPreviewEditorState: StructuredEditorCheckpoint | null = null;
 let versionPreviewGeneration = 0;
 
 function exitPieceVersionPreview() {
   versionPreviewGeneration += 1;
   versionPreview.exit();
-  setEditorReadOnly(pieceEditor, false);
+  pieceEditor.setReadOnly(false);
   if (versionPreviewEditorState) {
     applyingRemote = true;
     try {
-      pieceEditor.setState(versionPreviewEditorState);
+      pieceEditor.restore(versionPreviewEditorState);
     } finally {
       applyingRemote = false;
       versionPreviewEditorState = null;
@@ -390,7 +352,7 @@ function mountPieceHeader() {
       await snapshotNote(
         parentDir(target.path),
         target.name,
-        versionPreview.contentForRestore(pieceEditor.state.doc.toString()),
+        versionPreview.contentForRestore(pieceEditor.getMarkdown()),
         "manual",
       );
     },
@@ -401,10 +363,10 @@ function mountPieceHeader() {
       if (generation !== versionPreviewGeneration || activePieceFile()?.path !== target.path) {
         return false;
       }
-      versionPreview.begin(pieceEditor.state.doc.toString());
-      versionPreviewEditorState ??= pieceEditor.state;
-      setEditorReadOnly(pieceEditor, true);
-      applyPreviewTo(pieceEditor, content);
+      versionPreview.begin(pieceEditor.getMarkdown());
+      versionPreviewEditorState ??= pieceEditor.checkpoint();
+      pieceEditor.setReadOnly(true);
+      applyPiecePreview(content);
       return true;
     },
     exitPreview: exitPieceVersionPreview,
@@ -415,11 +377,11 @@ function mountPieceHeader() {
       try {
         await settlePendingWrites(path);
         if (activePieceFile()?.path !== target.path) return;
-        let currentContent = versionPreview.contentForRestore(pieceEditor.state.doc.toString());
+        let currentContent = versionPreview.contentForRestore(pieceEditor.getMarkdown());
         if (isDirty(path)) {
           await saveImmediate(path, currentContent);
           if (activePieceFile()?.path !== target.path) return;
-          currentContent = versionPreview.contentForRestore(pieceEditor.state.doc.toString());
+          currentContent = versionPreview.contentForRestore(pieceEditor.getMarkdown());
         }
         const restored = await restoreVersion(
           parentDir(target.path),
@@ -435,14 +397,14 @@ function mountPieceHeader() {
         if (versionPreviewEditorState) {
           applyingRemote = true;
           try {
-            pieceEditor.setState(versionPreviewEditorState);
+            pieceEditor.restore(versionPreviewEditorState);
           } finally {
             applyingRemote = false;
             versionPreviewEditorState = null;
           }
         }
-        setEditorReadOnly(pieceEditor, false);
-        applyRemoteTo(pieceEditor, restored.content);
+        pieceEditor.setReadOnly(false);
+        applyRemotePiece(restored.content);
       } catch (error) {
         throw error;
       }
@@ -466,7 +428,7 @@ function mountPieceHeader() {
     focusBody: () => {
       // 标题回车后，焦点落到正文编辑器首行行首。
       pieceEditor.focus();
-      pieceEditor.dispatch({ selection: { anchor: 0, head: 0 } });
+      pieceEditor.setSelection(0);
     },
     },
   });
@@ -476,7 +438,7 @@ async function openPiece(entry: NoteEntry) {
   pieceHeader?.exitVersionPreview();
   session.currentPiece = entry;
   pieceHeader?.setLabel(entry.name);
-  applyRemoteTo(pieceEditor, await loadNote(entry.path));
+  applyRemotePiece(await loadNote(entry.path));
 }
 
 /** 打开一个独立文档：切到文档模式，复用 pieceEditor 渲染该文件。 */
@@ -498,7 +460,7 @@ async function openDocument(doc: NoteEntry) {
   await setRecentDocuments(session.recentDocuments);
   setProjectLabel(doc.name);
   clearEmptyState();
-  applyRemoteTo(pieceEditor, await loadNote(doc.path));
+  applyRemotePiece(await loadNote(doc.path));
   pieceHeader?.setLabel(doc.name);
   applyView();
   void invoke("set_active_note", { dir: parentDir(doc.path), noteId: doc.name, path: doc.path, kind: "doc" });
@@ -535,16 +497,12 @@ function applyView() {
     app.classList.add("show-piece");
     app.classList.remove("show-inbox");
     setViewSeg("piece", false);
-    requestEditorLayout(editor);
-    requestEditorLayout(pieceEditor);
     return;
   }
   // 双栏时采集恒在左、写作恒在右；单栏时按 session.surface 选一个。
   app.classList.toggle("show-piece", !split && session.surface === "piece");
   app.classList.toggle("show-inbox", split || session.surface === "inbox");
   setViewSeg(split ? "split" : session.surface, canSplit(window.innerWidth));
-  requestEditorLayout(editor);
-  requestEditorLayout(pieceEditor);
 }
 
 function selectView(view: "inbox" | "piece" | "split") {
@@ -567,21 +525,21 @@ const tasksPanel = createTasksPanel(noteBody, {
   },
 });
 
-/** 用 AI/外部写入的新内容覆盖编辑器，不触发本地 autosave。 */
-function applyRemoteTo(view: EditorView, content: string) {
+/** 用 AI/外部写入的新内容覆盖结构化写作编辑器，不触发本地 autosave。 */
+function applyRemotePiece(content: string) {
   applyingRemote = true;
   try {
-    setDoc(view, content);
+    pieceEditor.replace(content, { addToHistory: true });
   } finally {
     applyingRemote = false;
   }
 }
 
 /** Version preview is a transient projection, not an edit or undo step. */
-function applyPreviewTo(view: EditorView, content: string) {
+function applyPiecePreview(content: string) {
   applyingRemote = true;
   try {
-    replaceDocWithoutHistory(view, content);
+    pieceEditor.replace(content, { addToHistory: false });
   } finally {
     applyingRemote = false;
   }
@@ -591,20 +549,13 @@ function applyRemoteDoc(content: string) {
   const decoded = decodeInbox(content);
   applyingRemote = true;
   try {
-    editor.dispatch({
-      changes: { from: 0, to: editor.state.doc.length, insert: decoded.markdown },
-      effects: replaceInboxMetadata.of(decoded.metadata),
-      annotations: Transaction.addToHistory.of(false),
-    });
+    structuredInbox.load(decoded.markdown, decoded.metadata);
+    structuredInbox.setReadOnly(decoded.warnings.length > 0);
   } finally {
     applyingRemote = false;
   }
-  const activeFilter = activeTagFilter(editor.state);
-  if (activeFilter && !decoded.metadata.tags.some((tag) => tag.id === activeFilter)) {
-    tagBar?.setActive(null);
-  }
   if (decoded.warnings.length > 0) {
-    showToast(`已忽略 ${decoded.warnings.length} 条无效的 Inbox 标注 metadata`);
+    showToast(`Inbox metadata 已损坏，已用只读模式打开（${decoded.warnings.length} 条错误）`);
   }
 }
 
@@ -657,7 +608,7 @@ async function handleAgentNoteUpdated(payload: NoteUpdated) {
       return;
     case "document":
       pieceHeader?.exitVersionPreview();
-      applyRemoteTo(pieceEditor, await loadNote(target.entry.path));
+      applyRemotePiece(await loadNote(target.entry.path));
       applyView();
       return;
   }
@@ -696,7 +647,7 @@ void onFileChanged(async (changedPath) => {
   if (activeFile && changedPath === activeFile.path) {
     try {
       pieceHeader?.exitVersionPreview();
-      applyRemoteTo(pieceEditor, await loadNote(activeFile.path));
+      applyRemotePiece(await loadNote(activeFile.path));
     } catch {
       // 文件已不存在（外部删除）→ 列剩余 pieces，切下一片或 NO_PIECE。
       await handleActivePieceGone();
@@ -769,7 +720,7 @@ onConflict(async (path, localContent) => {
         applyRemoteDoc(await loadNote(path));
       } else if (activeFile && path === activeFile.path) {
         pieceHeader?.exitVersionPreview();
-        applyRemoteTo(pieceEditor, await loadNote(path));
+        applyRemotePiece(await loadNote(path));
       } else if (session.currentProject && path === tasksPath(session.currentProject.path)) {
         tasksPanel.reload();
       } else {
@@ -1454,22 +1405,16 @@ async function init() {
     quickAddAction: () => tasksPanel.quickAdd(),
     increaseEditorFontSize: () => {
       const size = adjustEditorFontSize(1);
-      requestEditorLayout(editor);
-      requestEditorLayout(pieceEditor);
       pieceHeader?.refit();
       showToast(`笔记字号 ${size}px`);
     },
     decreaseEditorFontSize: () => {
       const size = adjustEditorFontSize(-1);
-      requestEditorLayout(editor);
-      requestEditorLayout(pieceEditor);
       pieceHeader?.refit();
       showToast(`笔记字号 ${size}px`);
     },
     resetEditorFontSize: () => {
       const size = resetEditorFontSize();
-      requestEditorLayout(editor);
-      requestEditorLayout(pieceEditor);
       pieceHeader?.refit();
       showToast(`笔记字号 ${size}px`);
     },
@@ -1512,7 +1457,6 @@ async function init() {
 
 void init();
 
-attachQuoteCapture(editor);
 attachAutomationToasts();
 
 }

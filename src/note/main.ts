@@ -9,4 +9,4 @@ if (import.meta.env.VITE_WDIO === "1") {
 }
 
 void initializeAppearance();
-startNoteApp();
+void startNoteApp();

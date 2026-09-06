@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Note surfaces browser review</title>
+  </head>
+  <body>
+    <main id="surface-review">
+      <section class="surface-column" aria-label="采集区">
+        <div class="surface-bar">采集</div>
+        <div id="inbox-host" class="note-scroll note-editor-host"></div>
+      </section>
+      <section class="surface-column" aria-label="写作区">
+        <div class="surface-bar">写作</div>
+        <div class="note-scroll surface-piece-scroll">
+          <div class="surface-title">作品标题</div>
+          <div id="piece-host" class="note-editor-host"></div>
+        </div>
+      </section>
+    </main>
+    <script type="module" src="./note-surfaces-fixture.ts"></script>
+  </body>
+</html>

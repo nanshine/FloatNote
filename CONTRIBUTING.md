@@ -4,7 +4,7 @@
 
 ## 快速开始
 
-需要 Node.js 22.19+、Rust stable，以及对应平台的 Tauri 开发依赖。
+需要 Node.js 22.19 LTS 或 Node.js 24 及以上（Node.js 23 不在支持范围内）、Rust stable，以及对应平台的 Tauri 开发依赖。
 
 ```bash
 npm install

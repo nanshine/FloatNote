@@ -6,6 +6,22 @@ import { fillMarkdown, renderMarkdown } from "./render";
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn().mockResolvedValue(undefined) }));
 
 describe("shared Markdown renderer", () => {
+  it("keeps the basic prose, heading, list and divider contracts", () => {
+    expect(renderMarkdown("hello & <world>")).toBe("<p>hello &amp; &lt;world&gt;</p>");
+    expect(renderMarkdown("# T1\n## T2\n### T3")).toBe("<h1>T1</h1><h2>T2</h2><h3>T3</h3>");
+    expect(renderMarkdown("- a\n- b")).toBe("<ul><li>a</li><li>b</li></ul>");
+    expect(renderMarkdown("before\n\n---\n\nafter")).toBe("<p>before</p><hr><p>after</p>");
+    expect(renderMarkdown("line one\nline two")).toBe("<p>line one line two</p>");
+    expect(renderMarkdown("")).toBe("");
+  });
+
+  it("escapes fenced code without losing surrounding prose", () => {
+    const html = renderMarkdown('before\n\n```js\nconst a = "<b>";\n```\nafter');
+    expect(html).toContain("<p>before</p>");
+    expect(html).toContain('<pre class="chat-codeblock"><code class="language-js">const a = &quot;&lt;b&gt;&quot;;</code></pre>');
+    expect(html).toContain("<p>after</p>");
+  });
+
   it("renders nested blockquotes and fenced code blocks", () => {
     const html = renderMarkdown("> outer\n>\n> > inner\n\n```ts\nconst x = 1;\n```");
 

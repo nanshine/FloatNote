@@ -9,7 +9,7 @@ import { mountPermissionBubble, type PermissionRequest } from "./permission-bubb
 import { projectPermission } from "./permission-model.js";
 import type { SkillSummary } from "./skill-picker.js";
 import type { MentionFile } from "./mention-picker.js";
-import { mountComposer, type ComposerHandle } from "./input/composer";
+import { mountComposer, type ComposerHandle } from "./input/structured-composer";
 import { composePromptPayload, type PromptPayload } from "./input/submit";
 import {
   type ChatEvent,

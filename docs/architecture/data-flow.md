@@ -9,14 +9,16 @@
 项目窗口会把当前可编辑笔记注册给 Rust。项目空间中，inbox、tasks 和 piece 都通过同一笔记读写路径处理；独立 Markdown 文件不拥有项目 tasks 面板。
 
 Inbox 在 WebView 内有明确的 raw/clean 边界：磁盘 `_inbox.md` 读取后由
-`decodeInbox` 分解为 clean Markdown + `InboxMetadata`，CodeMirror 只编辑 clean
-Markdown；正文或 metadata 事务发生后由 `encodeInbox` 同步生成一个完整快照，
+`decodeInbox` 分解为 clean Markdown + `InboxMetadata`，编辑器只接收 clean
+Markdown；随后统一 Remark 方言把 clean Markdown 解析为 ProseMirror 文档。编辑期间
+结构化文档和 annotation marks 是权威状态；正文事务发生后统一 serializer 生成规范化
+Markdown，再由 `encodeInbox` 同步生成一个完整快照，
 再交给现有 `scheduleSave` 防抖队列。Rust 始终把内容当作不透明 Markdown 字符串，
 因此 mtime、冲突、版本、watcher 和原子写路径不需要第二套存储协议。
 
 ## 版本浏览与恢复
 
-点击历史版本时，前端通过 `read_version` 读取快照，在原 CodeMirror 中切换为只读预览；前端保留进入预览前的正文，退出时原样恢复，不触发 autosave，也不创建版本。预览可连续切换多个历史版本，始终保留最初的可编辑正文作为恢复前内容。
+点击历史版本时，前端通过 `read_version` 读取快照，在原 ProseMirror 编辑器中切换为只读预览；前端保留进入预览前的完整 EditorState checkpoint，退出时恢复，不触发 autosave，也不创建版本。预览可连续切换多个历史版本，始终保留最初的可编辑状态作为恢复前内容。
 
 用户明确选择“恢复此版本”后，前端先串行等待该路径正在进行的 autosave，并把仍待保存的当前内容写盘，再携带最新 mtime 调用 `restore_version`。Rust 在创建备份前校验 mtime，磁盘已被外部修改时拒绝覆盖；当前内容与目标快照不同时保存一个 `source=restore`、名称为“恢复前备份”的安全版本，然后原子写回目标内容，相同则不制造重复快照。版本行的重命名和删除分别通过独立 command 更新 manifest 或移除对应快照；manifest 先安全替换，删除失败时保留或回滚版本索引，避免先丢快照内容。
 

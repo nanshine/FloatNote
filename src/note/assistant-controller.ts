@@ -11,7 +11,7 @@ import {
   agentOpenSession,
   agentSend,
   onAgentEvent,
-} from "./agent";
+} from "../platform/agent";
 import {
   chatCreate,
   chatDelete,
@@ -22,7 +22,7 @@ import {
   sessionDirFromFile,
   type ChatConversation,
   type ChatScope,
-} from "./chat-history";
+} from "../platform/chat-history";
 import { type NoteEntry, type ProjectEntry, listNotes, resolveDocuments, resolveProjects } from "./notes-state";
 import { NoteSession } from "./note-session";
 import { parentDir } from "./recent-projects";

@@ -6,3 +6,4 @@ ADR 记录仍会影响当前代码结构的决定；它们解释“为什么这�
 - [0002：以 Node sidecar 承载 AI agent](0002-node-sidecar.md)
 - [0003：以 `_inbox.md` 识别项目空间](0003-project-space-format.md)
 - [0004：为 Agent 提供 FloatNote 虚拟工作区](0004-floatnote-virtual-agent-workspace.md)
+- [0005：以结构化文档树作为 Markdown 编辑状态](0005-structured-markdown-editor-core.md)

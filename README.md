@@ -113,7 +113,7 @@
 
 ## 从源码运行
 
-需要 Node.js 22.19 或更高版本、Rust stable，以及 macOS 或 Windows 对应的 Tauri 开发环境。
+需要 Node.js 22.19 LTS 或 Node.js 24 及以上（Node.js 23 不在支持范围内）、Rust stable，以及 macOS 或 Windows 对应的 Tauri 开发环境。
 
 ```bash
 npm install

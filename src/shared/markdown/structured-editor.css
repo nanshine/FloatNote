@@ -1,0 +1,695 @@
+.fn-structured-editor {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  color: var(--color-text);
+  font-family: var(--font-sans);
+}
+
+/* Inbox, piece and standalone-document bodies are one visual and interaction
+ * surface. Feature capabilities may decorate the document, but must not fork
+ * its typography, spacing, focus treatment or empty-document hit area. */
+.fn-note-structured-editor {
+  height: 100%;
+  min-height: 100%;
+  font-size: var(--editor-font, 15px);
+  line-height: 1.6;
+}
+
+.fn-note-structured-editor > .editor {
+  box-sizing: border-box;
+  flex: 1 1 auto;
+  min-height: 100%;
+  padding: 16px 0;
+}
+
+.fn-structured-editor > .editor {
+  outline: none;
+  box-shadow: none;
+}
+
+.fn-structured-editor > .editor:focus,
+.fn-structured-editor > .editor:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
+.fn-structured-editor .ProseMirror-selectednode:not(.fn-structured-image),
+.fn-structured-editor .is-block-selected {
+  outline: 1px solid color-mix(in srgb, var(--color-accent) 68%, transparent);
+  outline-offset: -1px;
+}
+
+.fn-structured-editor > .editor > .fn-empty-paragraph {
+  position: relative;
+}
+
+.fn-structured-editor > .editor > .fn-empty-paragraph::before {
+  content: attr(data-placeholder);
+  position: absolute;
+  top: 0;
+  inset-inline-start: 0;
+  line-height: inherit;
+  color: var(--color-text-subtle);
+  pointer-events: none;
+}
+
+.fn-structured-editor p {
+  margin: 0.35em 0;
+}
+
+.fn-structured-editor ol,
+.fn-structured-editor ul {
+  --fn-list-indent: 3.2em;
+  margin: 0.35em 0;
+  padding-inline-start: var(--fn-list-indent);
+}
+
+/* Preserve the full marker/disclosure gutter while reducing the visual step
+ * between nested levels. */
+.fn-structured-editor li > .fn-list-item-content > ol,
+.fn-structured-editor li > .fn-list-item-content > ul {
+  margin-inline-start: -1em;
+}
+
+.fn-structured-editor li > p {
+  margin: 0;
+}
+
+.fn-structured-editor li {
+  position: relative;
+}
+
+.fn-structured-editor .fn-list-item-content {
+  display: contents;
+}
+
+.fn-structured-editor .fn-task-list-item {
+  list-style: none;
+}
+
+.fn-structured-editor .fn-task-list-checkbox {
+  width: 1em;
+  height: 1em;
+  margin: 0 0.45em 0 -1.45em;
+  vertical-align: -0.08em;
+  accent-color: var(--color-accent);
+}
+
+.fn-structured-editor .fn-list-fold-toggle {
+  position: absolute;
+  top: 0.22em;
+  /* Keep disclosure, marker, and text in separate columns. The full list
+   * indent also leaves enough room for multi-digit ordered-list markers. */
+  inset-inline-start: calc(-1 * var(--fn-list-indent) + 0.3em);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--color-text-subtle);
+  cursor: pointer;
+  opacity: 0.72;
+  transition: color 120ms ease, background-color 120ms ease, opacity 120ms ease;
+}
+
+.fn-structured-editor .fn-list-fold-toggle[hidden] {
+  display: none;
+}
+
+.fn-structured-editor .fn-list-fold-toggle:hover,
+.fn-structured-editor .fn-list-fold-toggle:focus-visible,
+.fn-structured-editor .fn-list-item--folded > .fn-list-fold-toggle {
+  background: var(--color-hover);
+  color: var(--color-accent);
+  opacity: 1;
+}
+
+.fn-structured-editor .fn-list-fold-chevron {
+  width: 12px;
+  height: 12px;
+  transform: rotate(90deg);
+  transition: transform 120ms ease;
+}
+
+.fn-structured-editor .fn-list-item--folded > .fn-list-fold-toggle .fn-list-fold-chevron {
+  transform: rotate(0deg);
+}
+
+.fn-structured-editor .fn-list-item--folded > .fn-list-item-content > ul,
+.fn-structured-editor .fn-list-item--folded > .fn-list-item-content > ol {
+  display: none;
+}
+
+.fn-structured-editor blockquote {
+  position: relative;
+  margin: 0.5em 0;
+  padding: 0.18em 10px 0.18em 24px;
+  border-left: 3px solid var(--color-border-strong);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--color-surface-2) 56%, transparent);
+  color: var(--color-text-muted);
+}
+
+.fn-structured-block-content {
+  min-width: 0;
+}
+
+.fn-structured-block-handle {
+  position: absolute;
+  z-index: 2;
+  top: 5px;
+  left: 2px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--color-text-subtle);
+  cursor: grab;
+  opacity: 0;
+  transition: opacity 140ms ease, color 140ms ease, background-color 140ms ease;
+}
+
+.fn-structured-block-handle svg {
+  width: 12px;
+  height: 16px;
+  fill: currentColor;
+}
+
+.fn-structured-editor blockquote:hover > .fn-structured-block-handle,
+.fn-structured-editor blockquote:focus-within > .fn-structured-block-handle,
+.fn-structured-codeblock:hover > .fn-structured-block-handle,
+.fn-structured-codeblock:focus-within > .fn-structured-block-handle,
+.is-block-selected > .fn-structured-block-handle {
+  opacity: 0.72;
+}
+
+.fn-structured-block-handle:hover {
+  background: var(--color-hover);
+  color: var(--color-accent);
+  opacity: 1 !important;
+}
+
+.fn-structured-divider {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  min-height: 16px;
+  margin: 0.32em 0;
+  border-radius: 4px;
+  cursor: default;
+}
+
+.fn-structured-divider:hover {
+  background: color-mix(in srgb, var(--color-hover) 55%, transparent);
+}
+
+.fn-structured-divider hr {
+  width: 100%;
+  height: 1px;
+  margin: 0;
+  border: 0;
+  background: var(--color-divider);
+}
+
+.fn-structured-editor .fn-quote-card {
+  display: block;
+  margin: 0.6em 0;
+  padding: 9px 12px 10px;
+  border: 0;
+  border-left: 3px solid var(--color-border-strong);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--color-surface-2) 72%, transparent);
+}
+
+.fn-quote-card__header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 18px;
+  margin-bottom: 4px;
+  color: var(--color-text-subtle);
+  font-size: 12px;
+  line-height: 1.35;
+  cursor: default;
+  user-select: none;
+}
+
+.fn-quote-card__icon {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  color: var(--color-text-subtle);
+}
+
+.fn-quote-card__source {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--color-text-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fn-quote-card__source.has-link {
+  color: var(--color-accent);
+}
+
+.fn-quote-card__source-editor {
+  display: grid;
+  min-width: 0;
+  flex: 1;
+  grid-template-columns: minmax(72px, 0.65fr) minmax(120px, 1.35fr) 26px 26px;
+  gap: 4px;
+}
+
+.fn-quote-card__source-editor[hidden] {
+  display: none;
+}
+
+.fn-quote-card__source-input {
+  box-sizing: border-box;
+  min-width: 0;
+  height: 26px;
+  padding: 3px 6px;
+  border: 1px solid var(--color-border);
+  border-radius: 5px;
+  outline: 0;
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+}
+
+.fn-quote-card__source-input:focus,
+.fn-quote-card__source-input:focus-visible {
+  border-color: var(--color-border);
+  outline: none;
+  background: color-mix(in srgb, var(--color-surface-2) 38%, var(--color-surface));
+  box-shadow: none;
+  caret-color: auto;
+}
+
+.fn-quote-card__source-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--color-text-subtle);
+  cursor: pointer;
+}
+
+.fn-quote-card__source-action:hover {
+  background: var(--color-hover);
+  color: var(--color-text);
+}
+
+.fn-quote-card__source-action svg {
+  width: 15px;
+  height: 15px;
+}
+
+.fn-quote-card__title-line {
+  display: none;
+}
+
+.fn-quote-card__content > :first-child {
+  margin-top: 0;
+}
+
+.fn-quote-card__content > :last-child {
+  margin-bottom: 0;
+}
+
+.fn-structured-editor pre {
+  overflow-x: auto;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--color-surface-3);
+  font-family: ui-monospace, "SF Mono", monospace;
+}
+
+.fn-structured-codeblock {
+  position: relative;
+  margin: 0.5em 0;
+  padding: 8px 12px 10px 30px;
+  border-radius: 8px;
+  background: var(--color-surface-3);
+}
+
+.fn-structured-codeblock > .fn-structured-block-handle {
+  top: 5px;
+  left: 5px;
+}
+
+.fn-structured-editor--readonly .fn-structured-block-handle,
+.fn-structured-editor--readonly .fn-quote-card__source-editor {
+  display: none;
+}
+
+.fn-structured-codeblock__language {
+  box-sizing: border-box;
+  display: block;
+  width: 100%;
+  height: 20px;
+  margin-bottom: 4px;
+  padding: 2px 0;
+  border: 0;
+  border-radius: 0;
+  outline: 0;
+  overflow: visible;
+  background: transparent;
+  color: var(--color-text-subtle);
+  font: 0.8em/16px ui-monospace, "SF Mono", monospace;
+  caret-color: auto;
+}
+
+.fn-structured-codeblock__language:focus,
+.fn-structured-codeblock__language:focus-visible {
+  outline: none;
+  color: var(--color-text-muted);
+  box-shadow: none;
+  caret-color: auto;
+}
+
+.fn-structured-editor table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.fn-structured-editor th,
+.fn-structured-editor td {
+  min-width: 2em;
+  padding: 4px 8px;
+  border: 1px solid var(--color-border);
+  text-align: left;
+}
+
+.fn-structured-editor th {
+  background: var(--color-surface-2);
+  font-weight: 600;
+}
+
+.fn-table-tools {
+  display: flex;
+  gap: 4px;
+  margin: 4px 0;
+}
+
+.fn-table-tools[hidden] {
+  display: none;
+}
+
+.fn-table-tools button {
+  padding: 2px 7px;
+  border: 1px solid var(--color-border);
+  border-radius: 5px;
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  font: inherit;
+  font-size: 0.78em;
+  cursor: pointer;
+}
+
+.fn-structured-math--inline {
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+  vertical-align: middle;
+}
+
+.fn-structured-math--block {
+  position: relative;
+  display: block;
+  width: 100%;
+  padding: 4px 0;
+  text-align: center;
+}
+
+.fn-structured-math__rendered {
+  overflow-x: auto;
+  border-radius: 4px;
+  cursor: text;
+}
+
+.fn-structured-math__rendered:hover {
+  background: var(--color-hover);
+}
+
+.fn-structured-math .katex-display {
+  margin: 0;
+}
+
+.fn-structured-math__input {
+  box-sizing: border-box;
+  width: min(420px, calc(100vw - 48px));
+  min-width: 10em;
+  padding: 6px 8px;
+  resize: none;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 7px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  box-shadow: var(--shadow-sm);
+  font: 0.9em/1.45 var(--font-mono);
+}
+
+.fn-structured-math--inline .fn-structured-math__input {
+  position: absolute;
+  z-index: 4;
+  left: 0;
+  bottom: calc(100% + 5px);
+}
+
+.fn-structured-math--block .fn-structured-math__input {
+  display: block;
+  margin: 2px auto;
+}
+
+.fn-structured-image {
+  position: relative;
+  display: flex;
+  width: fit-content;
+  max-width: 100%;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 3px;
+  margin-block: 0.45em;
+  vertical-align: middle;
+}
+
+.fn-structured-image__resize {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  border: 1px solid var(--color-accent);
+  border-radius: 50%;
+  background: var(--color-surface);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.fn-structured-image__resize--nw { top: -4px; left: -4px; cursor: nwse-resize; }
+.fn-structured-image__resize--n { top: -4px; left: 50%; cursor: ns-resize; }
+.fn-structured-image__resize--ne { top: -4px; right: -4px; cursor: nesw-resize; }
+.fn-structured-image__resize--e { top: 50%; right: -4px; cursor: ew-resize; }
+.fn-structured-image__resize--se { right: -4px; bottom: -4px; cursor: nwse-resize; }
+.fn-structured-image__resize--s { bottom: -4px; left: 50%; cursor: ns-resize; }
+.fn-structured-image__resize--sw { bottom: -4px; left: -4px; cursor: nesw-resize; }
+.fn-structured-image__resize--w { top: 50%; left: -4px; cursor: ew-resize; }
+
+.fn-structured-image.is-selected .fn-structured-image__resize {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.fn-structured-editor--readonly .fn-structured-image__resize {
+  display: none;
+}
+
+.fn-structured-image__image {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border-radius: 6px;
+}
+
+.fn-structured-image.is-selected .fn-structured-image__image {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.fn-structured-image__error {
+  display: none;
+  min-width: 180px;
+  padding: 18px 20px;
+  border: 1px dashed var(--color-border-strong);
+  border-radius: 7px;
+  background: var(--color-surface-2);
+  color: var(--color-text-subtle);
+  font-size: 12px;
+  text-align: center;
+}
+
+.fn-structured-image[data-load-state="error"] .fn-structured-image__image {
+  display: none;
+}
+
+.fn-structured-image[data-load-state="error"] .fn-structured-image__error {
+  display: block;
+}
+
+.fn-structured-image__caption {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 2px 4px;
+  border: 0;
+  border-bottom: 1px solid transparent;
+  outline: 0;
+  background: transparent;
+  color: var(--color-text-muted);
+  font: inherit;
+  font-size: 0.85em;
+  text-align: center;
+}
+
+.fn-structured-image__caption[hidden] {
+  display: none;
+}
+
+.fn-structured-image__caption-text {
+  color: var(--color-text-muted);
+  font-size: 0.85em;
+  text-align: center;
+}
+
+.fn-structured-image__caption:focus {
+  border-bottom-color: var(--color-accent);
+}
+
+.fn-structured-image[data-align="center"] {
+  margin-inline: auto;
+}
+
+.fn-structured-image[data-align="right"] {
+  margin-left: auto;
+}
+
+.fn-structured-image__tools {
+  position: absolute;
+  z-index: 3;
+  left: 50%;
+  bottom: calc(100% + 8px);
+  display: none;
+  justify-content: center;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+  box-shadow: var(--shadow-md);
+  transform: translateX(-50%);
+}
+
+.fn-structured-image.is-selected .fn-structured-image__tools {
+  display: flex;
+}
+
+.fn-structured-editor--readonly .fn-structured-image__tools,
+.fn-structured-editor--readonly .fn-structured-image__caption {
+  display: none;
+}
+
+.fn-structured-image__align-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+
+.fn-structured-image__align-button:hover {
+  background: var(--color-hover);
+  color: var(--color-text);
+}
+
+.fn-structured-image__align-button[aria-pressed="true"] {
+  background: var(--color-selected);
+  color: var(--color-accent);
+}
+
+.fn-structured-image__align-button svg {
+  width: 15px;
+  height: 15px;
+}
+
+.fn-structured-editor--readonly > .editor {
+  cursor: default;
+}
+
+.fn-inline-annotation {
+  background-color: color-mix(in srgb, var(--annotation-color) 16%, transparent);
+  box-shadow: inset 0 -2px 0 var(--annotation-color);
+  border-radius: 2px;
+}
+
+.fn-assistant-structured-editor {
+  box-sizing: border-box;
+  min-height: 36px;
+  max-height: 120px;
+  overflow-y: auto;
+  border: var(--fn-border-width) solid var(--color-border);
+  border-radius: 18px;
+  background: var(--color-surface);
+  font-size: var(--fs-md);
+  line-height: 1.4;
+}
+
+.fn-assistant-structured-editor:focus-within {
+  border-color: var(--color-accent);
+  box-shadow: inset 0 0 0 1px var(--color-accent);
+}
+
+.fn-assistant-structured-editor > .editor {
+  min-height: 18px;
+  padding: 7px 12px;
+}
+
+.fn-assistant-structured-editor p {
+  margin: 0;
+}
+
+.assistant-input-wrap.fn-input-large .fn-assistant-structured-editor {
+  width: 100%;
+  height: 100%;
+  max-height: none;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+}
+
+.assistant-input-wrap.fn-input-large .fn-assistant-structured-editor > .editor {
+  box-sizing: border-box;
+  min-height: 100%;
+  padding: clamp(56px, 8vh, 80px) clamp(28px, 7vw, 80px) clamp(88px, 12vh, 120px);
+}

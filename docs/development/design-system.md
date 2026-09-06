@@ -28,11 +28,11 @@ src/styles/primitives.css   src/styles/semantic.css   src/styles/components.css
   `src/shared/appearance.ts` 在每个窗口初始化时读取配置，并订阅 Rust 广播的
   `theme-changed` 事件。`system` 使用 `@media (prefers-color-scheme: dark)`；
   显式浅色或深色选择会覆盖该媒体查询。
-- CodeMirror 主题（`src/note/editor.ts`、`src/note/preview/builder.ts`）直接消费语义 CSS 变量；Markdown 列表正文继承正文色，只有项目符号/序号使用 muted 色，引用与代码语法分别消费可切换的 text/syntax token。
+- 结构化 Markdown 主题（`src/shared/markdown/structured-editor.css`）直接消费语义 CSS 变量；列表正文继承正文色，引用、公式、表格、图片工具和嵌套代码编辑器分别消费 text/syntax/surface token。CodeMirror 只允许存在于 `code_block` NodeView 内。
 
 ## 载入契约
 
-`index.html` / `settings.html` / `popup.html` / `history.html` 各在 `<head>` 链入 `/src/styles/index.css`，再链各自窗口样式。`src/note/preview/builder.ts` 的 CM 主题与 `src/shared/toast.ts` 是例外：toast 仍按文档自注入 `<style>`（早于全局层的历史遗留）。
+`index.html` / `settings.html` / `popup.html` / `history.html` 各在 `<head>` 链入 `/src/styles/index.css`，再链各自窗口样式。结构化编辑器样式由其模块入口加载；`src/shared/toast.ts` 仍按文档自注入 `<style>`，是早于全局层的历史遗留。
 
 `src/styles/tokens.test.ts` 守卫：断言 indigo 色阶完整、语义 token 存在、tokenized CSS 中无残留 `#2563eb`、四个 HTML 均链入 `index.css`、`index.css` 仅含 `@import`。
 
@@ -48,8 +48,8 @@ src/styles/primitives.css   src/styles/semantic.css   src/styles/components.css
 
 ## 交互状态（在 `base.css`）
 
-- **focus**：全局 `:where(button,a,input,select,textarea,[tabindex]):focus-visible` → `outline: 2px solid var(--color-accent)` + `box-shadow: 0 0 0 4px var(--color-focus-ring)`。修复了此前仅 history 有 focus 环的可达性缺口。组件**不得**覆盖 `outline`。
-- 助手紧凑输入器的 CodeMirror 根节点不是原生表单控件，且外层展开动画会裁剪外描边；因此由静态组件 CSS 持有 18px 圆角与 `--fn-border-width` 常驻边框，聚焦时用 accent 向内描边，避免 WebKit 绘制矩形 outline。只有进入聚焦纸张后才移除这层输入器 chrome。
+- **focus**：全局 `:where(button,a,input,select,textarea,[tabindex]):focus-visible` → `outline: 2px solid var(--color-accent)` + `box-shadow: 0 0 0 4px var(--color-focus-ring)`。结构化正文是例外：它依靠可见插入光标表达焦点，正文与宿主均不绘制整块轮廓，避免横向裁切后只剩上下两条色线；工具按钮仍保留标准 focus ring。
+- 助手紧凑输入器的 Milkdown 根节点不是原生表单控件，且外层展开动画会裁剪外描边；因此由静态组件 CSS 持有 18px 圆角与 `--fn-border-width` 常驻边框，`:focus-within` 用 accent 向内描边。只有进入聚焦纸张后才移除这层输入器 chrome。
 - **hover**：`--color-hover`（ghost）/ `--color-accent-hover`（primary）。
 - **selected/active**：`.is-on { background: var(--color-selected); color: var(--color-accent) }`。
 - **disabled**：`opacity: .4; cursor: default`。
@@ -65,7 +65,7 @@ src/styles/primitives.css   src/styles/semantic.css   src/styles/components.css
 `--color-focus-scrim`，纸张消费 `--color-surface` 与 `--shadow-xl`。纸张宽高分别为
 `min(920px, calc(100vw - 32px))` 和
 `min(720px, calc(100vh - 64px))`；内容 padding 用 `clamp()` 连续变化。
-聚焦态的 CodeMirror 根节点、滚动区与内容区不再绘制独立边框、背景或圆角，正文
+聚焦态的 Milkdown 根节点与 ProseMirror 内容区不再绘制独立边框、背景或圆角，正文
 行内边距同时约束文本和选区，顶部与底部分别留出关闭、发送按钮安全区。关闭与
 发送按钮的命中区均为 44px；聚焦态 Enter 只换行，发送只能点击右下角按钮。
 候选 popover 位于聚焦层之上，toast 再位于两者之上；动画遵循
@@ -80,10 +80,13 @@ AI/用户消息气泡、`create_note` 审查正文和 edit/write 的“新版本
 `$$...$$` 块级语法，非法公式显示转义后的源码。原始 HTML 与自动图片加载关闭，
 KaTeX 禁止受信命令并限制尺寸和宏展开，外部链接通过 Rust `open_url` allowlist 打开，不能导航当前 WebView。
 
-助手紧凑输入器和聚焦纸张继续共享一个 CodeMirror `EditorView`。它们使用
-`src/shared/markdown/editor.ts` 的 GFM 方言和轻量源码装饰：块层级与内联强调有
-预览样式，但表格、任务列表及 Markdown 标记仍可直接编辑；笔记窗口的图片、引用
-卡和可交互表格 widget 不进入共享层。
+助手紧凑输入器和聚焦纸张共享一个 Milkdown/ProseMirror EditorState。主笔记、
+独立文档和 composer 使用同一 CommonMark + GFM + Math 方言；Inbox、Piece 与独立文档
+还统一使用 `.fn-note-structured-editor`，任何采集能力都不得覆盖正文的字体、间距、
+分隔线、焦点或留白命中行为。列表、任务项、表格、
+公式、图片、引用卡和引用 chip 都是真实节点。Markdown 标记通常不直接显示，复杂
+节点通过 NodeView 工具编辑；只读 `.fn-markdown` 表面由同一 Remark 方言生成并在
+DOM 输出前执行安全策略。
 
 ## 共享组件（`src/shared/ui/`，`fn-` 前缀）
 
@@ -93,20 +96,21 @@ KaTeX 禁止受信命令并限制尺寸和宏展开，外部链接通过 Rust `o
 | Icon | `icon.ts` | `.fn-icon` | Phosphor 字形 + `action-card.ts` 内联 SVG |
 | Menu | `menu.ts` | `.fn-menu[__item/--danger/__separator/__submenu]` | `floating-menu.ts` + block 操作菜单 + `project-menu-render.ts` 子菜单 |
 | Popover | `components.css` | `.fn-popover` | assistant history / skill / mention 下拉的共同表面 |
-| Scrollbar | `scrollbar.ts` | `.fn-scroll__thumb[.is-visible]` | 原 note-only `.scroll-thumb`，推广到 history/assistant |
+| Scrollbar | `scrollbar.ts` | `.fn-scroll__thumb[.is-visible/.is-dragging]` | 原 note-only `.scroll-thumb`；thumb 挂在稳定外层、监听真实 scrollport，并支持拖动 |
 | Form control | `components.css` | `.fn-control` | settings 的 text/password/select 与 assistant 输入框 |
 | EmptyState | `empty-state.ts` | `.fn-empty*` + `.fn-btn*` actions | 笔记窗口全页 `NO_PROJECT` / `PATH_ERROR` / `NO_PIECE` |
 
 ## Inbox 文本标注
 
-Inbox 不再使用左侧 block handle、拖拽落点、块删除菜单或整块 tag tint。选中文本的
+Inbox 不再使用左侧 block handle、拖拽落点或块删除菜单。选中文本的
 原生右键/Control-click 入口在存在可标注正文时打开 `.fn-menu`；每个标签保留原始
-palette 色。正文装饰统一使用低对比中性底色，并以 1px 堆叠线分别呈现覆盖标签，
-不混色、不插入 chip、不显示 hover 名称；名称只出现在顶栏、菜单与无障碍描述中。
+palette 色。正文标注使用低对比标签色底与 2px 标签色下划线，不插入 chip、不显示
+hover 名称；名称只出现在顶栏、菜单与无障碍描述中。
 
 激活顶栏标签后显示 `#annotation-projection-root`：每个 Markdown 语义上下文是独立、
 可聚焦的 `.annotation-projection-item`，匹配文本用中性 `mark`。单击只聚焦结果，
-双击或 Enter 回到 clean editor 并选中源标注；projection 本身始终只读。
+双击或 Enter 回到 clean editor；projection 本身始终只读。标注在编辑器内是可重叠
+的 ProseMirror marks，保存时才投影回 v2 clean-Markdown offsets。
 
 设置窗口采用不透明内容画布与柔和描边卡片。标题栏和侧栏可以消费外壳表面
 token，内容卡片只消费 settings component token，不直接读取 primitive。原生
@@ -114,7 +118,7 @@ token，内容卡片只消费 settings component token，不直接读取 primiti
 继续由原生 checkbox 承载状态，并把 label 点击区扩展到至少 44px。快捷键录制器
 使用 `recording` / `has-value` / `has-error` 状态，所有动画服从全局 reduced-motion。
 
-组件按阶段增量接线：Phase 0 修组件（`createButton` iconOnly、`createMenu` 子菜单 Escape/焦点/互斥单浮层）→ icon → button → menu。窗口样式迁移到 `fn-` 类与 token。`src/note/empty-state.ts`、`src/note/scrollbar.ts` 已改为 `src/shared/ui/` 的 re-export，调用方不变。OS 级确认继续用原生 Tauri `confirm`（`notes-state.ts`），不引入 in-DOM modal。
+组件按阶段增量接线：Phase 0 修组件（`createButton` iconOnly、`createMenu` 子菜单 Escape/焦点/互斥单浮层）→ icon → button → menu。窗口样式迁移到 `fn-` 类与 token。滚动条直接使用 `src/shared/ui/scrollbar.ts`，不再保留 note-local 转发入口。OS 级确认继续用原生 Tauri `confirm`（`notes-state.ts`），不引入 in-DOM modal。
 
 ## 迁移状态
 
@@ -127,7 +131,7 @@ token，内容卡片只消费 settings component token，不直接读取 primiti
 - ✅ 设置窗口成为第一套完整迁移样板：原生平台外壳、侧栏导航、不透明卡片、
   内缩分隔线、统一 select/switch/recorder/error 状态均由现有三层 token 驱动。
 - ✅ 阶段二（第一批）：笔记窗口的项目/成品/版本/标签/文本标注菜单统一 `.fn-menu` / `.fn-menu__item`；全页 EmptyState 统一 `.fn-empty*` 与 `.fn-btn*` actions；assistant 的 history / skill / mention 下拉复用 `.fn-popover` 表面。`createMenu` 外点监听修复为在子菜单交互后仍保持有效，并有回归测试。
-- ⏳ 后续：继续逐调用点切到 `createButton`/`createIcon`，重点收敛笔记窗口遗留 `.icon-btn`；任务面板菜单与编辑器专属控件需保留其定位、拖拽或 CodeMirror 交互，再按行为抽取。
+- ⏳ 后续：继续逐调用点切到 `createButton`/`createIcon`，重点收敛笔记窗口遗留 `.icon-btn`；任务面板菜单与结构化编辑器专属 NodeView 控件需保留其定位、拖拽和事务语义，再按行为抽取。
 - 守卫：`src/styles/tokens.test.ts` 断言窗口 CSS 无残留 accent/danger rgba、无 per-window dark `@media` 块、danger 语义 token 存在、组件层不裸用 primitives。
 
 ## 跨平台注记
