@@ -48,8 +48,8 @@ src/styles/primitives.css   src/styles/semantic.css   src/styles/components.css
 
 ## 交互状态（在 `base.css`）
 
-- **focus**：全局 `:where(button,a,input,select,textarea,[tabindex]):focus-visible` → `outline: 2px solid var(--color-accent)` + `box-shadow: 0 0 0 4px var(--color-focus-ring)`。结构化正文是例外：它依靠可见插入光标表达焦点，正文与宿主均不绘制整块轮廓，避免横向裁切后只剩上下两条色线；工具按钮仍保留标准 focus ring。
-- 助手紧凑输入器的 Milkdown 根节点不是原生表单控件，且外层展开动画会裁剪外描边；因此由静态组件 CSS 持有 18px 圆角与 `--fn-border-width` 常驻边框，`:focus-within` 用 accent 向内描边。只有进入聚焦纸张后才移除这层输入器 chrome。
+- **focus**：按钮、链接、选择器等离散控件统一使用单层 `outline: 2px solid var(--color-accent)`，不再叠加外扩 shadow。标题、消息编辑框等连续文字编辑面以 `data-focus-style="quiet"` opt out，依靠可见插入光标和局部边框变化表达焦点，避免在滚动容器中出现被截断的整块轮廓；工具按钮仍保留标准 focus ring。
+- 助手紧凑输入器的 Milkdown 根节点不是原生表单控件，且外层展开动画会裁剪外描边；因此由静态组件 CSS 持有 18px 圆角与 `--fn-border-width` 常驻边框，`:focus-within` 只改变边框色，不再叠加第二层描边。只有进入聚焦纸张后才移除这层输入器 chrome。
 - **hover**：`--color-hover`（ghost）/ `--color-accent-hover`（primary）。
 - **selected/active**：`.is-on { background: var(--color-selected); color: var(--color-accent) }`。
 - **disabled**：`opacity: .4; cursor: default`。
@@ -70,6 +70,12 @@ src/styles/primitives.css   src/styles/semantic.css   src/styles/components.css
 发送按钮的命中区均为 44px；聚焦态 Enter 只换行，发送只能点击右下角按钮。
 候选 popover 位于聚焦层之上，toast 再位于两者之上；动画遵循
 `prefers-reduced-motion`。
+
+## 助手引用候选
+
+`@` 文件引用与 `/` Skill 共用 `.fn-ref-popover`：候选行由统一的线性图标、主名称、可选说明和低强调类型标签组成，hover 使用中性底色，键盘活动项使用轻量 accent state layer。浮层保持在视口内，顶部空间不足时翻转到输入器下方，并通过 `listbox` / `option`、`aria-selected` 和 `aria-activedescendant` 暴露键盘选择状态。
+
+项目系统文件的磁盘标识与展示名严格分离：`_inbox` 在菜单、引用 chip 与用户消息中显示为“采集区”，`_tasks` 显示为“行动清单”；内部引用 `id` 保持不变，确保文件定位和 Agent 协议稳定。原始标识只作为隐藏搜索别名参与匹配，不进入用户可见文本或 tooltip。
 
 ## Markdown 表面
 

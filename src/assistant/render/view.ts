@@ -1,15 +1,24 @@
-import { processGroupSummary, type Block, type ChatMessage } from "./state";
+import { processGroupSummary, type Block, type ChatMessage, type ChatReference } from "./state";
 import { buildActionCard } from "../action-card";
 import { fillMarkdown } from "../../shared/markdown/render";
 import { createIcon } from "../../shared/ui/icon";
 import { parseSelectionMessage } from "../../platform/selection-message";
 import { wireOpenUrlLink } from "../../platform/open-url";
+import { mentionPresentation, type MentionKind } from "../mention-picker";
 
 /**
  * 助手聊天的 DOM 渲染层：把 state.ts 产出的 `ChatMessage`/`Block` 投影成
  * 可复用的 DOM 节点。状态与渲染分离——`reduceEvents` 是纯函数，DOM 增量
  * 复用由 `blocks.ts` 驱动（按稳定 message/block id 复用而非全量重建）。
  */
+
+function visibleReferenceName(reference: ChatReference): string {
+  const specialKind: MentionKind | undefined = reference.noteKind === "inbox" || reference.id === "_inbox"
+    ? "inbox"
+    : reference.noteKind === "tasks" || reference.id === "_tasks" ? "tasks" : undefined;
+  if (!specialKind) return reference.display;
+  return mentionPresentation({ name: reference.id, kind: specialKind }).displayName;
+}
 
 /**
  * 在气泡下方挂载复制按钮（hover 浮出）。一次性挂载：节点稳定，
@@ -145,7 +154,8 @@ export function renderMessage(message: ChatMessage, outputMode: AssistantOutputM
       for (const reference of message.references) {
         const chip = document.createElement("span");
         chip.className = `chat-reference-chip ${reference.kind}`;
-        chip.textContent = reference.kind === "skill" ? `Skill · ${reference.display}` : `@ ${reference.display}`;
+        const displayName = reference.kind === "file" ? visibleReferenceName(reference) : reference.display;
+        chip.textContent = reference.kind === "skill" ? `Skill · ${displayName}` : `@ ${displayName}`;
         refs.appendChild(chip);
       }
       body.appendChild(refs);
@@ -337,6 +347,7 @@ export function startUserMessageEdit(messageEl: HTMLElement, messageId: string, 
   input.className = "chat-user-edit-input";
   input.value = initialText;
   input.setAttribute("aria-label", "编辑消息");
+  input.dataset.focusStyle = "quiet";
   const actions = document.createElement("div");
   actions.className = "chat-user-edit-actions";
   const cancel = document.createElement("button");
@@ -361,5 +372,13 @@ export function startUserMessageEdit(messageEl: HTMLElement, messageId: string, 
   actions.append(cancel, send);
   shell.append(input, actions);
   body.replaceWith(shell);
+  const fitInput = () => {
+    input.style.height = "0";
+    const height = Math.max(38, Math.min(input.scrollHeight, 160));
+    input.style.height = `${height}px`;
+    input.style.overflowY = input.scrollHeight > height ? "auto" : "hidden";
+  };
+  input.addEventListener("input", fitInput);
+  fitInput();
   input.focus();
 }

@@ -986,6 +986,13 @@ body {
   color: var(--color-text-subtle);
 }
 
+.piece-title-input:focus,
+.piece-title-input:focus-visible {
+  outline: none;
+  box-shadow: none;
+  caret-color: var(--color-accent);
+}
+
 .piece-title-input.rename-error {
   color: var(--color-danger);
 }

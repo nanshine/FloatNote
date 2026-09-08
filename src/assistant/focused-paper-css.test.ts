@@ -19,7 +19,7 @@ describe("focused paper CSS", () => {
       /\.fn-assistant-structured-editor\s*\{[^}]*border:\s*var\(--fn-border-width\) solid var\(--color-border\);[^}]*border-radius:\s*18px;[^}]*background:\s*var\(--color-surface\);/s,
     );
     expect(css).toMatch(
-      /\.fn-assistant-structured-editor:focus-within\s*\{[^}]*border-color:\s*var\(--color-accent\);[^}]*box-shadow:\s*inset 0 0 0 1px var\(--color-accent\);/s,
+      /\.fn-assistant-structured-editor:focus-within\s*\{[^}]*border-color:\s*var\(--color-accent\);[^}]*box-shadow:\s*none;/s,
     );
     expect(css).toMatch(
       /\.assistant-input-wrap\.fn-input-large \.fn-assistant-structured-editor\s*\{[^}]*box-shadow:\s*none;/s,

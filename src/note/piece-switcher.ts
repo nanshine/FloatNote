@@ -102,6 +102,7 @@ export function createPieceHeader(args: {
   title.rows = 1;
   title.spellcheck = false;
   title.setAttribute("aria-label", "成品标题（即文件名）");
+  title.dataset.focusStyle = "quiet";
   // textarea 默认能输入换行；标题=文件名不允许换行符，统一拦掉。
   title.setAttribute("wrap", "soft");
 

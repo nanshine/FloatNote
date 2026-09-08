@@ -34,18 +34,48 @@ export interface MentionPickerHandle {
 
 const KIND_LABEL: Record<MentionKind, string> = {
   inbox: "采集",
-  tasks: "任务",
-  piece: "成品",
+  tasks: "行动",
+  piece: "写作",
   doc: "文档",
 };
 
-/** 纯函数：构建文件列表 DOM（供 jsdom 测试）。按 name 子串过滤。
+const SPECIAL_DISPLAY_NAME: Partial<Record<MentionKind, string>> = {
+  inbox: "采集区",
+  tasks: "行动清单",
+};
+
+const KIND_SEARCH_ALIASES: Record<MentionKind, string> = {
+  inbox: "采集 采集区 inbox _inbox",
+  tasks: "行动 行动清单 任务 tasks _tasks",
+  piece: "写作 成品 piece",
+  doc: "文档 document doc",
+};
+
+/** Keep filesystem identifiers stable while presenting system notes as product
+ * concepts. This projection is shared by the legacy picker and the structured
+ * composer, so `_inbox` / `_tasks` never leak into user-facing labels. */
+export function mentionPresentation(file: MentionFile): {
+  displayName: string;
+  kindLabel: string;
+  keywords: string;
+} {
+  return {
+    displayName: SPECIAL_DISPLAY_NAME[file.kind] ?? file.name,
+    kindLabel: KIND_LABEL[file.kind],
+    keywords: `${file.name} ${KIND_SEARCH_ALIASES[file.kind]}`,
+  };
+}
+
+/** 纯函数：构建文件列表 DOM（供 jsdom 测试）。按展示名和隐藏别名过滤。
  *  每项是 `<button data-mention-name="...">`，含 name + kind 标签两个 span。 */
 export function renderFileList(files: MentionFile[], query: string): HTMLElement {
   const container = document.createElement("div");
   container.className = "assistant-mention-list";
   const q = query.trim().toLowerCase();
-  const filtered = q ? files.filter((f) => f.name.toLowerCase().includes(q)) : files;
+  const filtered = q ? files.filter((file) => {
+    const presentation = mentionPresentation(file);
+    return `${presentation.displayName} ${presentation.keywords}`.toLowerCase().includes(q);
+  }) : files;
   if (filtered.length === 0) {
     const empty = document.createElement("div");
     empty.className = "assistant-mention-empty";
@@ -54,16 +84,17 @@ export function renderFileList(files: MentionFile[], query: string): HTMLElement
     return container;
   }
   for (const f of filtered) {
+    const presentation = mentionPresentation(f);
     const item = document.createElement("button");
     item.type = "button";
     item.className = "assistant-mention-item";
     item.dataset.mentionName = f.name;
     const name = document.createElement("span");
     name.className = "assistant-mention-name";
-    name.textContent = f.name;
+    name.textContent = presentation.displayName;
     const kind = document.createElement("span");
     kind.className = "assistant-mention-kind";
-    kind.textContent = KIND_LABEL[f.kind];
+    kind.textContent = presentation.kindLabel;
     item.append(name, kind);
     container.appendChild(item);
   }
@@ -122,7 +153,8 @@ export function mountMentionPicker(opts: MentionPickerOptions): MentionPickerHan
     attr: "data-mention-name",
     onSelect: (name) => {
       // 替换区间以实时 activeRange 为准（过滤期间会更新）。
-      applyMention(input, name, activeRange.start, activeRange.end);
+      const file = cache?.files.find((candidate) => candidate.name === name);
+      applyMention(input, file ? mentionPresentation(file).displayName : name, activeRange.start, activeRange.end);
       close();
     },
     onOutside: close,

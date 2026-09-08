@@ -77,6 +77,16 @@ describe("design tokens", () => {
     );
   });
 
+  it("uses a single focus ring and lets text-editing surfaces opt into quiet focus", () => {
+    const base = readFileSync(resolve(root, "src/styles/base.css"), "utf8");
+    const globalFocus = base.match(/:where\(button,[\s\S]*?\):not\(\[data-focus-style="quiet"\]\):focus-visible\s*\{([^}]*)\}/)?.[1] ?? "";
+    const quietFocus = base.match(/\[data-focus-style="quiet"\]:focus-visible\s*\{([^}]*)\}/)?.[1] ?? "";
+    expect(globalFocus).toMatch(/outline:\s*2px solid var\(--color-accent\)/);
+    expect(globalFocus).not.toMatch(/box-shadow/);
+    expect(quietFocus).toMatch(/outline:\s*none/);
+    expect(quietFocus).toMatch(/box-shadow:\s*none/);
+  });
+
   it("exposes the danger semantic tokens (mirroring accent, light + dark)", () => {
     const s = readFileSync(resolve(root, "src/styles/semantic.css"), "utf8");
     for (const tok of [

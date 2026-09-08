@@ -248,6 +248,8 @@ describe("reconcileMessages", () => {
     scroll.querySelector<HTMLButtonElement>(".chat-edit-btn")!.click();
     const input = scroll.querySelector<HTMLTextAreaElement>(".chat-user-edit-input")!;
     expect(input.value).toBe("before");
+    expect(input.dataset.focusStyle).toBe("quiet");
+    expect(input.style.overflowY).toBe("hidden");
     expect(scroll.querySelector(".chat-message-actions")).toBeNull();
     input.value = "after";
     scroll.querySelector<HTMLButtonElement>(".chat-user-edit-cancel")!.click();
@@ -269,5 +271,24 @@ describe("reconcileMessages", () => {
     reconcileMessages(scroll, state.messages, map);
     expect(scroll.querySelector(".chat-reference-chip.file")?.textContent).toContain("piece.md");
     expect(scroll.querySelector(".chat-reference-chip.skill")?.textContent).toContain("Skill · summarize");
+  });
+
+  it("normalizes legacy system-file references at the final display boundary", () => {
+    const scroll = makeScroll();
+    const map = new Map<string, HTMLElement>();
+    const state = run([{
+      type: "user",
+      text: "整理它",
+      references: [
+        { kind: "file", id: "_inbox", display: "_inbox", noteKind: "inbox" },
+        { kind: "file", id: "_tasks", display: "_tasks", noteKind: "tasks" },
+      ],
+    }]);
+    reconcileMessages(scroll, state.messages, map);
+    const text = scroll.querySelector(".chat-reference-chips")?.textContent ?? "";
+    expect(text).toContain("采集区");
+    expect(text).toContain("行动清单");
+    expect(text).not.toContain("_inbox");
+    expect(text).not.toContain("_tasks");
   });
 });

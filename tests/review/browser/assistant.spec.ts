@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 
 interface InputChrome {
   backgroundColor: string;
+  borderColor: string;
   borderRadius: string;
   borderStyle: string;
   boxShadow: string;
@@ -18,6 +19,7 @@ async function inputChrome(): Promise<InputChrome> {
     const rect = editor.getBoundingClientRect();
     return {
       backgroundColor: style.backgroundColor,
+      borderColor: style.borderTopColor,
       borderRadius: style.borderRadius,
       borderStyle: style.borderTopStyle,
       boxShadow: style.boxShadow,
@@ -61,7 +63,8 @@ describe("assistant input browser review", () => {
     )));
     const focused = await inputChrome();
     assertVisibleChrome(focused);
-    assert.notEqual(focused.boxShadow, "none");
+    assert.equal(focused.boxShadow, "none");
+    assert.equal(focused.borderColor, "rgb(79, 70, 229)");
 
     await $("#review-stage").click({ x: 4, y: 4 });
     await browser.waitUntil(() => browser.execute(() => !(

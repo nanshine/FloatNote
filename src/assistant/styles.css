@@ -146,7 +146,8 @@
   min-width: 0;
   max-width: 100%;
   min-height: 38px;
-  resize: vertical;
+  max-height: 160px;
+  resize: none;
   padding: 9px 12px;
   border: 1px solid var(--color-border-strong);
   border-radius: 14px 14px 4px 14px;
@@ -154,6 +155,13 @@
   color: inherit;
   font: inherit;
   line-height: inherit;
+  caret-color: var(--color-accent);
+  transition: border-color var(--motion-fast) var(--ease-standard);
+}
+.chat-user-edit-input:focus {
+  border-color: color-mix(in srgb, var(--color-accent) 58%, var(--color-border));
+  outline: none;
+  box-shadow: none;
 }
 .chat-user-edit-actions { display: flex; justify-content: flex-end; gap: 6px; margin-top: 6px; }
 
@@ -1307,15 +1315,16 @@
 .fn-ref-popover {
   position: fixed;
   z-index: 110;
-  min-width: 200px;
+  width: min(320px, calc(100vw - 16px));
+  min-width: min(240px, calc(100vw - 16px));
   max-width: 320px;
   max-height: 240px;
   overflow-y: auto;
-  padding: 4px;
+  padding: 6px;
   border: 0.5px solid var(--color-border);
   border-radius: 10px;
   background: var(--color-surface);
-  box-shadow: var(--shadow-lg);
+  box-shadow: var(--shadow-md);
   color: var(--color-text);
 }
 
@@ -1326,10 +1335,12 @@
 }
 
 .fn-ref-popover-item {
+  width: 100%;
   display: grid;
-  grid-template-columns: auto 1fr;
+  grid-template-columns: 24px minmax(0, 1fr) auto;
   align-items: center;
   gap: 8px;
+  min-height: 40px;
   padding: 6px 8px;
   border: none;
   border-radius: 7px;
@@ -1339,19 +1350,46 @@
   cursor: pointer;
   font-size: 13px;
   line-height: 1.35;
+  transition: background var(--motion-fast) var(--ease-standard),
+    color var(--motion-fast) var(--ease-standard);
 }
 
-.fn-ref-popover-item.active,
 .fn-ref-popover-item:hover {
   background: var(--color-hover);
 }
 
+.fn-ref-popover-item.active {
+  background: color-mix(in srgb, var(--color-accent) 7%, transparent);
+}
+
+.fn-ref-popover-item:focus-visible {
+  outline-offset: -2px;
+}
+
+.fn-ref-popover-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-2);
+  color: var(--color-text-muted);
+}
+
+.fn-ref-popover-item.active .fn-ref-popover-icon {
+  background: color-mix(in srgb, var(--color-accent) 12%, var(--color-surface));
+  color: var(--color-accent);
+}
+
+.fn-ref-popover-copy {
+  min-width: 0;
+}
+
 .fn-ref-popover-kind {
   font-size: 11px;
-  padding: 1px 6px;
-  border-radius: 6px;
-  background: var(--color-accent-fill);
-  color: var(--color-accent);
+  color: var(--color-text-subtle);
+  white-space: nowrap;
 }
 
 .fn-ref-popover-label {
@@ -1362,7 +1400,8 @@
 }
 
 .fn-ref-popover-desc {
-  grid-column: 1 / -1;
+  display: block;
+  margin-top: 1px;
   color: var(--color-text-subtle);
   font-size: 12px;
   overflow: hidden;

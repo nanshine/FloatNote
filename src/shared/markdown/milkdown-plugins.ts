@@ -185,7 +185,7 @@ export const assistantRefSchema = $nodeSchema("assistant_ref", () => ({
   toDOM: (node) => ["span", {
     "data-assistant-ref": "",
     class: "fn-ref-chip",
-    title: node.attrs.id,
+    title: node.attrs.display,
   }, node.attrs.display],
   parseMarkdown: { match: () => false, runner: () => undefined },
   toMarkdown: { match: (node) => node.type.name === "assistant_ref", runner: () => undefined },

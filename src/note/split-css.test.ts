@@ -49,6 +49,8 @@ describe("split view CSS placement", () => {
     );
     expect(editorCss).toMatch(/\.fn-note-structured-editor > \.editor\s*\{[^}]*padding:\s*16px 0;/s);
     expect(editorSource).toContain("createStructuredMarkdownEditor");
+    expect(pieceSwitcherSource).toContain('title.dataset.focusStyle = "quiet"');
+    expect(css).toMatch(/\.piece-title-input:focus,[^{]*\.piece-title-input:focus-visible\s*\{[^}]*outline:\s*none;[^}]*box-shadow:\s*none;/s);
     expect(css).not.toContain(".cm-selected-line-break");
   });
 

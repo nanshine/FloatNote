@@ -2,6 +2,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { mountComposer, type ComposerHandle } from "./structured-composer";
 import type { PromptPayload } from "./submit";
+import type { MentionFile } from "../mention-picker";
+import type { SkillSummary } from "../skill-picker";
 
 if (!Range.prototype.getClientRects) {
   Object.defineProperty(Range.prototype, "getClientRects", { value: () => [] });
@@ -15,7 +17,10 @@ describe("structured composer", () => {
     document.body.replaceChildren();
   });
 
-  async function setup(): Promise<{ submitted: PromptPayload[]; host: HTMLElement }> {
+  async function setup(options: {
+    files?: MentionFile[];
+    skills?: SkillSummary[];
+  } = {}): Promise<{ submitted: PromptPayload[]; host: HTMLElement }> {
     const wrap = document.createElement("div");
     const host = document.createElement("div");
     wrap.append(host);
@@ -26,8 +31,8 @@ describe("structured composer", () => {
       wrapHost: wrap,
       placeholder: "说点什么…",
       getScope: () => ({ scopeType: "project", scopePath: "p", scopeLabel: "p", cwd: "p" }),
-      listFiles: async () => [{ name: "piece.md", kind: "piece" }],
-      listSkills: async () => [],
+      listFiles: async () => options.files ?? [{ name: "piece.md", kind: "piece" }],
+      listSkills: async () => options.skills ?? [],
       onSubmit: async (payload) => { submitted.push(payload); return true; },
     });
     await vi.waitFor(() => expect(host.querySelector(".fn-assistant-structured-editor")).toBeTruthy());
@@ -62,5 +67,56 @@ describe("structured composer", () => {
     handle!.pressKey("Enter");
     expect(handle!.getDoc()).toContain("first");
     expect(handle!.isLarge()).toBe(true);
+  });
+
+  it("renders structured, accessible candidates and hides system filenames", async () => {
+    const { submitted, host } = await setup({
+      files: [
+        { name: "_inbox", kind: "inbox" },
+        { name: "_tasks", kind: "tasks" },
+      ],
+    });
+    handle!.insertText("@");
+    await vi.waitFor(() => expect(handle!.isPopoverOpen()).toBe(true));
+
+    const popover = document.querySelector<HTMLElement>(".fn-ref-popover")!;
+    const options = popover.querySelectorAll<HTMLElement>("[role=option]");
+    expect(popover.getAttribute("aria-label")).toBe("引用文档");
+    expect(popover.textContent).toContain("采集区");
+    expect(popover.textContent).toContain("行动清单");
+    expect(popover.textContent).not.toContain("_inbox");
+    expect(options[0].getAttribute("aria-selected")).toBe("true");
+    expect(options[0].querySelector(".fn-ref-popover-icon")).toBeTruthy();
+    expect(options[0].querySelector(".fn-ref-popover-kind")?.textContent).toBe("采集");
+
+    const editor = host.querySelector<HTMLElement>(".editor")!;
+    expect(editor.getAttribute("aria-expanded")).toBe("true");
+    expect(editor.getAttribute("aria-activedescendant")).toBe(options[0].id);
+    handle!.pressKey("Enter");
+    const chip = host.querySelector<HTMLElement>("[data-assistant-ref]")!;
+    expect(chip.textContent).toBe("采集区");
+    expect(chip.title).toBe("采集区");
+    handle!.submit();
+    expect(submitted[0].references).toEqual([
+      { kind: "file", id: "_inbox", display: "采集区", noteKind: "inbox" },
+    ]);
+  });
+
+  it("shows skill descriptions and type labels in the shared menu", async () => {
+    await setup({
+      skills: [{
+        name: "organize",
+        description: "Organize collected notes",
+        displayName: "梳理材料",
+        displayDescription: "按主题整理采集内容",
+      }],
+    });
+    handle!.insertText("/");
+    await vi.waitFor(() => expect(handle!.isPopoverOpen()).toBe(true));
+    const popover = document.querySelector<HTMLElement>(".fn-ref-popover")!;
+    expect(popover.getAttribute("aria-label")).toBe("使用技能");
+    expect(popover.querySelector(".fn-ref-popover-label")?.textContent).toBe("梳理材料");
+    expect(popover.querySelector(".fn-ref-popover-desc")?.textContent).toBe("按主题整理采集内容");
+    expect(popover.querySelector(".fn-ref-popover-kind")?.textContent).toBe("技能");
   });
 });

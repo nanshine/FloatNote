@@ -1,5 +1,5 @@
 import type { ChatScope } from "../../platform/chat-history";
-import type { MentionFile } from "../mention-picker";
+import { mentionPresentation, type MentionFile } from "../mention-picker";
 import type { SkillSummary } from "../skill-picker";
 import { Selection } from "@milkdown/kit/prose/state";
 import { Fragment, Slice } from "@milkdown/kit/prose/model";
@@ -9,8 +9,17 @@ import { detectTrigger, type Trigger } from "./trigger";
 import { filterItems, type Candidate } from "./filter";
 import { composePromptPayload, type PromptPayload } from "./submit";
 import { docFromClipboard, parseDoc, REF_CLIPBOARD_MIME, refToken, type Ref } from "./model";
+import { createIcon } from "../../shared/ui/icon";
 
 const COMPACT_INPUT_MAX_HEIGHT = 120;
+let popoverSequence = 0;
+
+const NOTE_KIND_ICON: Record<MentionFile["kind"], string> = {
+  inbox: "ph ph-squares-four",
+  tasks: "ph ph-list-checks",
+  piece: "ph ph-file-text",
+  doc: "ph ph-file",
+};
 
 export interface ComposerOptions {
   editorHost: HTMLElement;
@@ -76,6 +85,7 @@ export function mountComposer(options: ComposerOptions): ComposerHandle {
     trigger: null,
   };
   menu.el.className = "fn-popover fn-ref-popover";
+  menu.el.id = `fn-ref-popover-${++popoverSequence}`;
   menu.el.hidden = true;
   menu.el.setAttribute("role", "listbox");
   document.body.append(menu.el);
@@ -194,31 +204,85 @@ export function mountComposer(options: ComposerOptions): ComposerHandle {
     menu.candidates = scored.map((item) => item.candidate);
     menu.active = 0;
     menu.trigger = trigger;
+    menu.el.dataset.mode = trigger.mode;
+    menu.el.setAttribute("aria-label", trigger.mode === "file" ? "引用文档" : "使用技能");
     menu.el.replaceChildren();
     for (const [index, candidate] of menu.candidates.entries()) {
       const button = document.createElement("button");
       button.type = "button";
       button.className = "fn-ref-popover-item";
+      button.id = `${menu.el.id}-option-${index}`;
+      button.tabIndex = -1;
+      button.setAttribute("role", "option");
       button.classList.toggle("active", index === 0);
-      button.textContent = candidate.ref.display;
+
+      const noteKind = candidate.ref.meta?.noteKind;
+      const iconClass = candidate.ref.kind === "skill"
+        ? "ph ph-sparkle"
+        : NOTE_KIND_ICON[noteKind ?? "doc"];
+      const icon = document.createElement("span");
+      icon.className = "fn-ref-popover-icon";
+      icon.append(createIcon({ phosphor: iconClass, size: 15 }));
+
+      const copy = document.createElement("span");
+      copy.className = "fn-ref-popover-copy";
+      const label = document.createElement("span");
+      label.className = "fn-ref-popover-label";
+      label.textContent = candidate.ref.display;
+      copy.append(label);
+      if (candidate.description) {
+        const description = document.createElement("span");
+        description.className = "fn-ref-popover-desc";
+        description.textContent = candidate.description;
+        copy.append(description);
+      }
+
+      const kind = document.createElement("span");
+      kind.className = "fn-ref-popover-kind";
+      kind.textContent = candidate.ref.kind === "skill"
+        ? "技能"
+        : mentionPresentation({ name: candidate.ref.id, kind: noteKind ?? "doc" }).kindLabel;
+
+      button.append(icon, copy, kind);
       button.onmouseenter = () => { menu.active = index; refreshActive(); };
       button.onclick = () => confirmMenu();
       menu.el.append(button);
     }
     menu.el.hidden = false;
+    editor?.contentDOM.setAttribute("aria-expanded", "true");
+    refreshActive();
     const rect = options.editorHost.getBoundingClientRect();
-    menu.el.style.left = `${rect.left}px`;
-    menu.el.style.top = `${rect.top - menu.el.offsetHeight - 6}px`;
+    const viewportGap = 8;
+    const measuredWidth = menu.el.offsetWidth || Math.min(320, window.innerWidth - viewportGap * 2);
+    const measuredHeight = menu.el.offsetHeight;
+    const maxLeft = Math.max(viewportGap, window.innerWidth - measuredWidth - viewportGap);
+    const left = Math.min(Math.max(rect.left, viewportGap), maxLeft);
+    const above = rect.top - measuredHeight - 6;
+    const below = rect.bottom + 6;
+    const maxTop = Math.max(viewportGap, window.innerHeight - measuredHeight - viewportGap);
+    const top = above >= viewportGap ? above : Math.min(below, maxTop);
+    menu.el.style.left = `${left}px`;
+    menu.el.style.top = `${Math.max(viewportGap, top)}px`;
   }
 
   function refreshActive(): void {
-    [...menu.el.children].forEach((child, index) => child.classList.toggle("active", index === menu.active));
+    [...menu.el.children].forEach((child, index) => {
+      const active = index === menu.active;
+      child.classList.toggle("active", active);
+      child.setAttribute("aria-selected", String(active));
+    });
+    const active = menu.el.children[menu.active];
+    if (editor && active instanceof HTMLElement) {
+      editor.contentDOM.setAttribute("aria-activedescendant", active.id);
+    }
   }
 
   function closeMenu(): void {
     menu.el.hidden = true;
     menu.candidates = [];
     menu.trigger = null;
+    editor?.contentDOM.setAttribute("aria-expanded", "false");
+    editor?.contentDOM.removeAttribute("aria-activedescendant");
   }
 
   function plainTextBeforeSelection(): { text: string; blockStart: number } | null {
@@ -245,7 +309,13 @@ export function mountComposer(options: ComposerOptions): ComposerHandle {
       }
       if (token !== triggerToken) return;
       renderMenu(fileCache.files.map((file) => ({
-        ref: { kind: "file", id: file.name, display: file.name, meta: { noteKind: file.kind } },
+        ref: {
+          kind: "file",
+          id: file.name,
+          display: mentionPresentation(file).displayName,
+          meta: { noteKind: file.kind },
+        },
+        keywords: mentionPresentation(file).keywords,
       })), { ...trigger, from: current.blockStart + trigger.from, to: current.blockStart + trigger.to });
     } else {
       skillCache ??= await options.listSkills().catch(() => []);
@@ -325,6 +395,10 @@ export function mountComposer(options: ComposerOptions): ComposerHandle {
   }).then((created) => {
     if (destroyed) return void created.destroy();
     editor = created;
+    editor.contentDOM.setAttribute("aria-autocomplete", "list");
+    editor.contentDOM.setAttribute("aria-haspopup", "listbox");
+    editor.contentDOM.setAttribute("aria-controls", menu.el.id);
+    editor.contentDOM.setAttribute("aria-expanded", "false");
     editor.contentDOM.addEventListener("compositionstart", () => { composing = true; });
     editor.contentDOM.addEventListener("compositionend", () => { composing = false; void recompute(); });
     installClipboard();
