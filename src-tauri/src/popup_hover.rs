@@ -1,5 +1,7 @@
+#[cfg(any(target_os = "macos", test))]
 const HOVER_INTERVAL_NS: u64 = 33_333_333;
 
+#[cfg(any(target_os = "macos", test))]
 fn should_relay_move(enabled: bool, previous_timestamp: u64, timestamp: u64) -> bool {
     enabled
         && (previous_timestamp == 0

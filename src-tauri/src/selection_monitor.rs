@@ -30,10 +30,12 @@ use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
 #[cfg(target_os = "windows")]
 use windows_sys::Win32::UI::WindowsAndMessaging::GetCursorPos;
 
+#[cfg(any(target_os = "macos", test))]
 use crate::selection_intent::Point;
 #[cfg(target_os = "macos")]
 use crate::selection_intent::{MouseDown, MouseUp, SelectionIntentTracker};
 
+#[cfg(any(target_os = "macos", test))]
 #[derive(Clone, Copy)]
 struct LogicalRect {
     x: f64,
@@ -42,6 +44,7 @@ struct LogicalRect {
     height: f64,
 }
 
+#[cfg(any(target_os = "macos", test))]
 fn point_in_rect(point: Point, rect: LogicalRect) -> bool {
     point.x >= rect.x
         && point.x <= rect.x + rect.width
@@ -49,6 +52,7 @@ fn point_in_rect(point: Point, rect: LogicalRect) -> bool {
         && point.y <= rect.y + rect.height
 }
 
+#[cfg(any(target_os = "macos", test))]
 fn should_dismiss_for_key(popup_visible: bool, popup_interactive: bool) -> bool {
     popup_visible && !popup_interactive
 }
@@ -335,14 +339,9 @@ fn auto_mode_enabled(app: &AppHandle) -> bool {
         .unwrap_or(false)
 }
 
+#[cfg(target_os = "macos")]
 pub fn is_current_selection_event(event_number: u64) -> bool {
-    #[cfg(target_os = "macos")]
-    return LATEST_SELECTION_EVENT.load(Ordering::SeqCst) == event_number;
-    #[cfg(not(target_os = "macos"))]
-    {
-        let _ = event_number;
-        false
-    }
+    LATEST_SELECTION_EVENT.load(Ordering::SeqCst) == event_number
 }
 
 #[cfg(target_os = "macos")]

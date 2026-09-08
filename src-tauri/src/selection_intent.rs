@@ -1,12 +1,13 @@
 pub const DRAG_THRESHOLD: f64 = 5.0;
 
+#[cfg(any(target_os = "macos", test))]
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Point {
     pub x: f64,
     pub y: f64,
 }
 
-#[allow(dead_code)]
+#[cfg(any(target_os = "macos", test))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum AxTargetKind {
     Text,
@@ -20,6 +21,7 @@ pub enum AxTargetKind {
     Unknown,
 }
 
+#[cfg(any(target_os = "macos", test))]
 impl AxTargetKind {
     pub fn is_textual(self) -> bool {
         matches!(
@@ -29,6 +31,7 @@ impl AxTargetKind {
     }
 }
 
+#[cfg(any(target_os = "macos", test))]
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct MouseDown {
     pub event_number: u64,
@@ -37,6 +40,7 @@ pub struct MouseDown {
     pub target: AxTargetKind,
 }
 
+#[cfg(any(target_os = "macos", test))]
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct MouseUp {
     pub event_number: u64,
@@ -45,6 +49,7 @@ pub struct MouseUp {
     pub click_count: u8,
 }
 
+#[cfg(any(target_os = "macos", test))]
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SelectionCandidate {
     pub event_number: u64,
@@ -55,11 +60,13 @@ pub struct SelectionCandidate {
     pub target: AxTargetKind,
 }
 
+#[cfg(any(target_os = "macos", test))]
 #[derive(Default)]
 pub struct SelectionIntentTracker {
     pending: Option<MouseDown>,
 }
 
+#[cfg(any(target_os = "macos", test))]
 impl SelectionIntentTracker {
     pub fn on_mouse_down(&mut self, event: MouseDown) {
         self.pending = Some(event);

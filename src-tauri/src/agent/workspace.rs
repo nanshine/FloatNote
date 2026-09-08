@@ -223,7 +223,6 @@ fn commit_at(
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[allow(dead_code)] // Rewrite/create are consumed by the mutation transaction added in Task 6.
 pub enum ResolveMode {
     ReadExisting,
     RewriteExisting,

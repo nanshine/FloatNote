@@ -97,6 +97,7 @@ impl PopupCache {
         true
     }
 
+    #[cfg(any(target_os = "macos", test))]
     pub fn is_interactive(&self) -> bool {
         self.session
             .lock()
@@ -337,6 +338,7 @@ pub fn run_popup_capture(app: &AppHandle) {
     run_popup_capture_with_origin(app, PopupOrigin::Shortcut, None, None);
 }
 
+#[cfg(target_os = "macos")]
 pub fn run_auto_popup_capture(app: &AppHandle, selection_event: u64) {
     run_popup_capture_with_origin(app, PopupOrigin::Auto, Some(selection_event), None);
 }
@@ -451,12 +453,14 @@ fn hide_popup(app: &AppHandle) {
     }
 }
 
+#[cfg(target_os = "macos")]
 pub fn is_visible(app: &AppHandle) -> bool {
     app.get_webview_window("selection-popup")
         .and_then(|popup| popup.is_visible().ok())
         .unwrap_or(false)
 }
 
+#[cfg(target_os = "macos")]
 pub fn is_interactive(app: &AppHandle) -> bool {
     app.try_state::<AppState>()
         .is_some_and(|state| state.popup_cache.is_interactive())
