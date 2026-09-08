@@ -163,7 +163,9 @@ describe("design tokens", () => {
   it("aggregates the four token layers in index.css (import-only)", () => {
     const idx = readFileSync(resolve(root, "src/styles/index.css"), "utf8");
     // No bare rules — only @import (CSS spec requires @import first).
-    expect(idx.replace(/\/\*[\s\S]*?\*\//g, "").trim()).not.toMatch(/^[^@]/m);
+    // 归一化 CRLF：Windows 检出会把 \r 留成行首字符，干扰 ^ 锚点判定。
+    const lines = idx.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\r\n/g, "\n").trim();
+    expect(lines).not.toMatch(/^[^@]/m);
     for (const layer of ["primitives", "semantic", "base", "components"]) {
       expect(idx).toContain(`@import "./${layer}.css"`);
     }
