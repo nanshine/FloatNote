@@ -140,11 +140,21 @@ pub fn run() {
             // Hide instead of close the note window so it can be re-opened later.
             if let Some(note_win) = app.get_webview_window("main") {
                 let handle = app.handle().clone();
-                note_win.on_window_event(move |event| {
-                    if let WindowEvent::CloseRequested { api, .. } = event {
+                note_win.on_window_event(move |event| match event {
+                    WindowEvent::CloseRequested { api, .. } => {
                         api.prevent_close();
                         crate::windows::set_note_visible(&handle, false);
                     }
+                    // WebView2 draws the IME composition window from a caret
+                    // anchor that goes stale when the host window moves or
+                    // resizes, so let the note window re-anchor it once the
+                    // gesture settles. Windows-only: no other platform needs it.
+                    #[cfg(target_os = "windows")]
+                    WindowEvent::Moved(_) | WindowEvent::Resized(_) => {
+                        use tauri::Emitter;
+                        let _ = handle.emit_to("main", "window-geometry-changed", ());
+                    }
+                    _ => {}
                 });
             }
 

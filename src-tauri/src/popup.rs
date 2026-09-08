@@ -403,7 +403,7 @@ fn run_popup_capture_with_origin(
         return;
     }
 
-    let (x, y) = crate::cursor::get_cursor_pos().unwrap_or((0.0, 0.0));
+    let (x, y) = crate::cursor::get_cursor_pos(app).unwrap_or((0.0, 0.0));
 
     let payload = PopupPayload {
         x,

@@ -6,6 +6,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { onFileChanged, onNoteUpdated, type NoteUpdated } from "../platform/agent";
 import { decodeInbox } from "@floatnote/note-logic";
 import { isImeComposing } from "../shared/keyboard";
+import { createImeAnchorRefresher } from "../shared/ime-anchor";
 import { showToast } from "../shared/toast";
 import { createIcon } from "../shared/ui/icon";
 import { createMenu, type MenuHandle } from "../shared/ui/menu";
@@ -1370,6 +1371,11 @@ window.addEventListener("resize", () => {
   if (resizeSettle) clearTimeout(resizeSettle);
   resizeSettle = window.setTimeout(() => noteBody.classList.remove("resizing"), 180);
 });
+
+// WebView2 的输入法锚点在窗口被拖动/缩放后会失效（候选框跑到屏幕角落），
+// 手势停下后重新聚焦编辑器即可复位。后端只在 Windows 上发这个事件。
+const imeAnchorRefresher = createImeAnchorRefresher();
+void listen("window-geometry-changed", () => imeAnchorRefresher.schedule());
 
 async function init() {
   const config = await getConfig();
