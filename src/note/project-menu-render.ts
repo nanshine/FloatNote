@@ -154,15 +154,27 @@ export function createProjectMenuRenderer(deps: ProjectMenuRendererDeps) {
     input.select();
     input.addEventListener("click", (event) => event.stopPropagation());
 
-    let submitting = false;
+    // settled：已提交或已取消，防止 Enter / blur / 外部 pointerdown 多路径重复提交。
+    let settled = false;
+
+    // 菜单的重命名此前「只有回车才提交，失焦只关菜单不落盘」。中文输入法下确认
+    // 候选词的回车会被 isImeComposing 吞掉，用户随后点别处 → 编辑被静默丢弃（表现为
+    // 「重命名没有用」，Windows/WebView2 下尤甚）。现改为「失焦即提交」，与写作区
+    // 标题的 commitRename 对齐。
+    function detachPointerGuard() {
+      document.removeEventListener("pointerdown", onOutsidePointerDown, true);
+    }
+
     async function confirm() {
-      if (submitting) return;
+      if (settled) return;
+      settled = true;
+      detachPointerGuard();
       const name = input.value.trim();
+      // 空 / 未改名 → 只关菜单，不落盘。
       if (!name || name === currentName) {
         deps.closeMenu();
         return;
       }
-      submitting = true;
       try {
         await commit(name);
       } catch (error) {
@@ -170,6 +182,26 @@ export function createProjectMenuRenderer(deps: ProjectMenuRendererDeps) {
       }
       deps.closeMenu();
     }
+
+    function cancel() {
+      if (settled) return;
+      settled = true;
+      detachPointerGuard();
+      deps.closeMenu();
+    }
+
+    // 点击输入框以外时，菜单的 outside-pointerdown（冒泡阶段）会先把 input 从 DOM
+    // 移除，而被移除元素的 blur 在部分内核并不触发；再挂一个「捕获阶段」pointerdown
+    // 兜底——它先于菜单的冒泡处理器执行，确保点击别处也能提交而非丢弃。
+    function onOutsidePointerDown(event: PointerEvent) {
+      if (!input.isConnected) {
+        detachPointerGuard();
+        return;
+      }
+      if (input.contains(event.target as Node)) return; // 点在输入框内：继续编辑
+      void confirm();
+    }
+    document.addEventListener("pointerdown", onOutsidePointerDown, true);
 
     input.addEventListener("keydown", (event) => {
       if (isImeComposing(event)) return;
@@ -180,11 +212,12 @@ export function createProjectMenuRenderer(deps: ProjectMenuRendererDeps) {
       if (event.key === "Escape") {
         event.preventDefault();
         event.stopPropagation();
-        deps.closeMenu();
+        cancel();
       }
     });
+    // 键盘切走焦点（如 Tab）时 input 仍在 DOM，blur 可靠触发 → 提交。
     input.addEventListener("blur", () => {
-      if (!submitting) deps.closeMenu();
+      void confirm();
     });
   }
 
