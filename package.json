@@ -27,7 +27,7 @@
     "test:infra": "node --test ./scripts/*.test.mjs",
     "test": "npm run test:frontend && npm run test:infra && npm run test:sidecar",
     "smoke:sidecar": "npm run smoke --workspace=floatnote-agent-sidecar",
-    "icon:generate": "tauri icon src-tauri/icons/app-icon.png -o src-tauri/icons",
+    "icon:generate": "node ./scripts/app-icon.mjs",
     "package:sidecar": "npm run package:sidecar --workspace=floatnote-agent-sidecar",
     "version:check": "node ./scripts/release-version.mjs check",
     "version:set": "node ./scripts/release-version.mjs set",
