@@ -1,0 +1,14 @@
+# Normalize line endings in the repository independent of each machine's
+# core.autocrlf setting, so Windows and macOS checkouts behave identically.
+# All text is stored and checked out as LF; every toolchain in this repo
+# (Rust/cargo, Node, Vite, tauri) handles LF on Windows.
+* text=auto eol=lf
+
+# Binary assets: never apply line-ending conversion.
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.ico  binary
+*.icns binary
+*.mp4  binary
