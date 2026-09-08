@@ -476,11 +476,6 @@ describe("reduceEvents", () => {
     ]);
   });
 
-  it("ignores ready events", () => {
-    const state = run([{ type: "ready" }]);
-    expect(norm(state.messages)).toEqual([]);
-  });
-
   it("loads a session snapshot and marks it as active", () => {
     const state = run([
       {

@@ -19,12 +19,12 @@ function setup() {
 }
 
 describe("provider settings", () => {
-  it("renders six fixed rows with explicit unconfigured states", () => {
+  it("renders five fixed rows with explicit unconfigured states", () => {
     const { root } = setup();
     expect([...root.querySelectorAll<HTMLElement>("[data-provider-id]")].map((row) => row.dataset.providerId))
-      .toEqual(["openai", "deepseek", "anthropic", "bailian", "kimi", "zhipu"]);
+      .toEqual(["openai", "deepseek", "anthropic", "kimi", "zhipu"]);
     expect([...root.querySelectorAll(".provider-status")].map((node) => node.textContent))
-      .toEqual(Array.from({ length: 6 }, () => "未配置"));
+      .toEqual(Array.from({ length: 5 }, () => "未配置"));
   });
 
   it("expands only one row without changing the active provider", () => {
@@ -40,11 +40,11 @@ describe("provider settings", () => {
 
   it("uses text model input and only shows Base URL where allowed", () => {
     const { root } = setup();
-    for (const provider of ["openai", "deepseek", "anthropic", "bailian", "kimi", "zhipu"]) {
+    for (const provider of ["openai", "deepseek", "anthropic", "kimi", "zhipu"]) {
       root.querySelector<HTMLButtonElement>(`[data-provider-expand="${provider}"]`)!.click();
       expect(root.querySelector<HTMLInputElement>(`[data-provider-model="${provider}"]`)?.type).toBe("text");
       expect(Boolean(root.querySelector(`[data-provider-base-url="${provider}"]`)))
-        .toBe(["openai", "anthropic", "bailian"].includes(provider));
+        .toBe(["openai", "anthropic"].includes(provider));
       expect(root.querySelector("select")).toBeNull();
     }
   });

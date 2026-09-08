@@ -63,6 +63,7 @@ pub fn apply(app: &AppHandle, capture: &str, toggle: &str, popup: &str) -> Resul
 
 #[cfg(test)]
 mod tests {
+    #[cfg(target_os = "windows")]
     use super::*;
 
     #[cfg(target_os = "windows")]

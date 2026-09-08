@@ -23,7 +23,7 @@ FloatNote 使用 Vite 多页面应用：根目录 HTML 是各 WebView 入口。`
   减小和重置为 15px，不使用 WebView 整页缩放。
   Inbox 先 `decodeInbox`，再把 v2 ranges 映射为允许重叠的 annotation marks；标签定义
   留在领域/plugin state。保存时 serializer 重建规范 Markdown offsets 后调用
-  `encodeInbox`，磁盘协议与 sidecar wire 不变。损坏 metadata 以只读模式打开，避免
+  `encodeInbox`，磁盘协议与 Rust Agent clean-coordinate 规则一致。损坏 metadata 以只读模式打开，避免
   静默覆盖。tag filter 使用独立只读 projection，不改写编辑文档。
   `piece-switcher.ts` 同时管理版本菜单与预览操作条；版本预览保存完整 EditorState
   checkpoint、以无历史替换展示快照，退出后恢复原状态。
@@ -33,13 +33,13 @@ FloatNote 使用 Vite 多页面应用：根目录 HTML 是各 WebView 入口。`
 设置窗口由 `src/settings/main.ts` 装配，`shell.ts` 管理原生标题栏下的侧栏与分类
 切换，`general.ts` 管理主题与开机启动，`skills.ts` 管理目录清单、启停与导入，
 `shortcuts.ts` 管理录制器、渐进披露和冲突反馈。模块通过 `Config` 与显式保存
-回调协作，不跨模块查询 DOM。AI 提供商仍由 `provider-settings.ts` 管理六个固定档案，`output-mode.ts` 负责助手简洁/详细显示设置并在保存失败时恢复旧选择。
+回调协作，不跨模块查询 DOM。AI 提供商由 `provider-settings.ts` 管理五个固定档案，`output-mode.ts` 负责助手简洁/详细显示设置并在保存失败时恢复旧选择。
 Skill 候选和设置列表显示目录清单中的 `displayName` 与 `displayDescription`，
 但候选引用、启停开关和发送协议始终使用稳定英文 `name`；外部 Skill 未提供
 FloatNote 展示元数据时，host 已将显示字段回退到标准 `name` 与 `description`。
 列表采用单列行内展开，一次只编辑一家；输入先保存在本地草稿，只有字段合法且
 发生变化时才允许显式保存。启用开关与展开状态独立，未保存 API Key 与模型的
-档案不可启用，Base URL 只对 OpenAI、Anthropic 与阿里云百炼显示。
+档案不可启用，Base URL 只对 OpenAI 与 Anthropic 显示；OpenAI-compatible 服务复用 OpenAI 档案。
 
 外观由 `Config.theme`（`system`、`light`、`dark`）控制，设置窗口的通用页负责保存
 选择。各窗口的 `initializeAppearance` 会先使用安全的 `system` 默认值，再读取配置并
@@ -47,6 +47,6 @@ FloatNote 展示元数据时，host 已将显示字段回退到标准 `name` 与
 Cmd/Ctrl 加减号与 0 的编辑器字号调整，并通过共享 `--editor-font` 同步 Inbox、Piece
 正文和写作标题。
 
-`shared/note-logic/` 是前端和 sidecar 共享的 workspace package，包含 Inbox v2
+`shared/note-logic/` 是前端纯逻辑 workspace package，包含 Inbox v2
 codec、文本区间变换、Markdown 语义上下文、精确文本匹配和标签调色板等纯逻辑；
-它不依赖 DOM、Node I/O 或 Tauri API。旧 Inbox top-level block parser 已删除。
+它不依赖 DOM、Node I/O 或 Tauri API；Rust Agent 以独立端口和 parity 测试消费相同磁盘格式。

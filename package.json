@@ -8,8 +8,7 @@
     "node": "^22.19.0 || >=24.0.0"
   },
   "workspaces": [
-    "shared/note-logic",
-    "sidecar"
+    "shared/note-logic"
   ],
   "overrides": {
     "@wdio/native-utils": "2.5.0",
@@ -18,22 +17,18 @@
   "scripts": {
     "dev": "vite",
     "build:frontend": "tsc && vite build",
-    "build:sidecar": "npm run build --workspace=floatnote-agent-sidecar",
-    "build": "npm run build:frontend && npm run build:sidecar",
+    "build": "npm run build:frontend",
     "preview": "vite preview",
     "tauri": "node ./scripts/tauri.mjs",
     "test:frontend": "vitest run",
-    "test:sidecar": "npm test --workspace=floatnote-agent-sidecar",
     "test:infra": "node --test ./scripts/*.test.mjs",
-    "test": "npm run test:frontend && npm run test:infra && npm run test:sidecar",
-    "smoke:sidecar": "npm run smoke --workspace=floatnote-agent-sidecar",
+    "test": "npm run test:frontend && npm run test:infra",
     "icon:generate": "tauri icon src-tauri/icons/app-icon.png -o src-tauri/icons",
-    "package:sidecar": "npm run package:sidecar --workspace=floatnote-agent-sidecar",
     "version:check": "node ./scripts/release-version.mjs check",
     "version:set": "node ./scripts/release-version.mjs set",
     "ci:local": "node ./scripts/local-ci.mjs ci",
     "release:check": "node ./scripts/local-ci.mjs release",
-    "check": "npm run test && npm run build && npm run smoke:sidecar",
+    "check": "npm run test && npm run build",
     "review:ui": "node ./scripts/review-ui.mjs",
     "review:native:doctor": "node ./scripts/native-review-doctor.mjs"
   },
@@ -73,9 +68,7 @@
     "unified": "11.0.5"
   },
   "devDependencies": {
-    "@swc/core": "^1.0.0",
     "@tauri-apps/cli": "^2",
-    "@types/mocha": "^10.0.0",
     "@types/node": "^22.10.0",
     "@types/turndown": "^5.0.6",
     "@wdio/cli": "^9.27.0",
@@ -85,7 +78,6 @@
     "@wdio/tauri-plugin": "^1.2.0",
     "@wdio/tauri-service": "^1.2.0",
     "jsdom": "^27.0.1",
-    "mocha": "^10.0.0",
     "typescript": "^5.6.0",
     "vite": "^8.1.5",
     "vitest": "^4.1.10"

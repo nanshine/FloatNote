@@ -12,9 +12,8 @@ import { type EditPreviewDetail, type WriteMode } from "../permission-bubble";
  * 而非全量重建（见 `blocks.ts`）。
  */
 
-/** 用户在输入框发送的本地事件 + 前端派生的 permission 事件，与 sidecar 的 AgentEvent 一起喂给 reducer。 */
+/** 用户在输入框发送的本地事件 + 前端派生的 permission 事件，与 Rust AgentEvent 一起喂给 reducer。 */
 export type ChatEvent =
-  | { type: "ready" }
   | {
       type: "session_opened";
       conversationId: string;
@@ -31,7 +30,7 @@ export type ChatEvent =
   | { type: "user_edit"; messageId: string; text: string }
   | { type: "user_rewind"; messageId: string; text: string }
   | { type: "pending"; conversationId?: string }
-  // thinking 块事件（sidecar 新转发）。
+  // thinking 块事件（Rust Agent 流式转发）。
   | { type: "thinking_start"; requestId: string; conversationId?: string; blockId: string }
   | { type: "thinking_delta"; requestId: string; conversationId?: string; text: string }
   | { type: "thinking_end"; requestId: string; conversationId?: string }
@@ -135,9 +134,6 @@ export function isChatStreaming(state: ChatState): boolean {
 /** 纯函数：根据一条事件返回新状态（不变更入参）。 */
 export function reduceEvents(state: ChatState, event: ChatEvent): ChatState {
   switch (event.type) {
-    case "ready":
-      return state;
-
     case "session_opened":
       if (!acceptsConversation(state, event)) return state;
       if (

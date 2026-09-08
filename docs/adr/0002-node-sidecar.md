@@ -1,5 +1,7 @@
 # ADR 0002：以 Node sidecar 承载 AI agent
 
+状态：由 [ADR 0006](0006-rust-rig-agent-runtime.md) 取代。
+
 状态：接受。
 
 AI agent 依赖 Node 生态和长生命周期会话，而桌面应用的文件、窗口与系统集成由 Rust/Tauri 管理。

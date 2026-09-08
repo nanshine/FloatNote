@@ -1,6 +1,6 @@
 /**
  * Canonical tag color palette, shared between the frontend tag picker and the
- * sidecar agent's note-tagging tools. Both consumers MUST see the same color
+ * Rust Agent note-tagging tools mirror this exact palette. Both runtimes MUST see the same color
  * set — otherwise the agent could pick (or reject) a color the user never
  * sees in the picker, or vice versa.
  */

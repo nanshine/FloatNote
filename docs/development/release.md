@@ -49,7 +49,7 @@ npm run version:check
 npm run release:check -- --tag v0.2.0
 ```
 
-发布预检依次执行 clean install、带 tag 的版本校验、完整 JS/TS 检查、sidecar staging，以及 `cargo test --lib`、`cargo check`、`cargo check --release`。任一步失败都会立即停止。它不会创建 Git tag、GitHub Release 或上传资产。
+发布预检依次执行 clean install、带 tag 的版本校验、完整 JS/TS 检查，以及 `cargo test --lib`、`cargo check`、`cargo check --release`。任一步失败都会立即停止。它不会创建 Git tag、GitHub Release 或上传资产。
 
 回到仓库根目录，创建与项目版本完全一致的 `v` 前缀标签：
 
@@ -99,7 +99,7 @@ git push origin v0.2.0
 
 1. 在未安装 Node 的干净用户环境中安装 FloatNote；
 2. 从 Finder 正常打开应用，确认无需“仍要打开”绕过 Gatekeeper；
-3. 确认 agent status ready，发送一条只读对话；
+3. 发送一条只读 Agent 对话；
 4. 确认写入权限气泡和应用写入；
 5. 重启后确认聊天恢复。
 
@@ -143,10 +143,10 @@ npm ci
 npm run tauri build
 ```
 
-Tauri 的 `beforeBuildCommand` 会生成 sidecar resource 和 external Node runtime。Node runtime 来自执行构建的 Node 进程，因此本地构建也必须在目标架构机器上进行，或者显式提供匹配目标的 `FLOATNOTE_NODE_RUNTIME` 与 `FLOATNOTE_TARGET_TRIPLE`。
+Tauri 的 `beforeBuildCommand` 只构建前端；Rig Agent 静态链接进 Rust 主程序，内置 Skills 作为普通 resources 打包。
 
 ## 本地签名与 CI 差异
 
 `src-tauri/tauri.conf.json` 保留 `signingIdentity: "-"`，因此没有发布 secrets 的本地构建仍使用 ad-hoc 签名。CI 导入 Developer ID 证书后设置的 `APPLE_SIGNING_IDENTITY` 会覆盖该值，并触发正式签名与公证。
 
-external Node runtime 必须继续与应用一起签名，`Entitlements.plist` 中供 V8 JIT 使用的权限不得移除。修改 sidecar 打包、external binary 或 entitlements 后，应通过新的 Draft 构建重新执行 Apple 公证验证。
+应用不再申请 JIT 或 unsigned executable memory entitlement。修改 Rig、TLS、Agent resources 或签名配置后，应通过新的 Draft 构建重新执行 Apple 公证验证。

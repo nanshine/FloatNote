@@ -53,23 +53,29 @@ pub enum AiProviderId {
     Openai,
     Deepseek,
     Anthropic,
-    Bailian,
     Kimi,
     Zhipu,
+    /// Old or unknown provider identifiers deserialize here, then normalization
+    /// removes them so a retired provider cannot reset the whole config file.
+    #[serde(other)]
+    Unsupported,
 }
 
 impl AiProviderId {
-    pub const ALL: [Self; 6] = [
+    pub const ALL: [Self; 5] = [
         Self::Openai,
         Self::Deepseek,
         Self::Anthropic,
-        Self::Bailian,
         Self::Kimi,
         Self::Zhipu,
     ];
 
     pub fn allows_base_url(self) -> bool {
-        matches!(self, Self::Openai | Self::Anthropic | Self::Bailian)
+        matches!(self, Self::Openai | Self::Anthropic)
+    }
+
+    pub fn is_supported(self) -> bool {
+        !matches!(self, Self::Unsupported)
     }
 }
 
@@ -87,6 +93,9 @@ impl AiProviderConfig {
     }
 
     pub fn normalized_for(&self, provider: AiProviderId) -> Result<Self, String> {
+        if !provider.is_supported() {
+            return Err("未知的 AI 提供商".into());
+        }
         let api_key = self.api_key.trim().to_string();
         let model = self.model.trim().to_string();
         if api_key.is_empty() {
@@ -144,6 +153,7 @@ impl Default for AiSettings {
 
 impl AiSettings {
     fn normalize_loaded(&mut self) {
+        self.providers.remove(&AiProviderId::Unsupported);
         for provider in AiProviderId::ALL {
             let profile = self.providers.entry(provider).or_default();
             if !provider.allows_base_url() {
@@ -151,6 +161,9 @@ impl AiSettings {
             }
         }
         self.active_provider_id = self.active_provider_id.filter(|provider| {
+            if !provider.is_supported() {
+                return false;
+            }
             self.providers
                 .get(provider)
                 .is_some_and(|profile| profile.normalized_for(*provider).is_ok())
@@ -254,9 +267,13 @@ pub fn load(path: &Path) -> Config {
     match std::fs::read_to_string(path) {
         Ok(contents) => {
             let mut config: Config = serde_json::from_str(&contents).unwrap_or_default();
+            let loaded = config.clone();
             config.auto_popup_mode = normalize_auto_popup_mode(&config.auto_popup_mode);
             migrate_windows_shortcuts(&mut config);
             config.ai_settings.normalize_loaded();
+            if config != loaded {
+                let _ = save(path, &config);
+            }
             config
         }
         Err(_) => Config::default(),
@@ -385,7 +402,10 @@ mod tests {
     fn partial_json_keeps_other_defaults() {
         let config: Config = serde_json::from_str(r#"{"launch_at_login":true}"#).unwrap();
         assert!(config.launch_at_login);
-        assert_eq!(config.shortcut_capture, format!("Alt+{}+C", primary_shortcut_modifier()));
+        assert_eq!(
+            config.shortcut_capture,
+            format!("Alt+{}+C", primary_shortcut_modifier())
+        );
         assert_eq!(config.assistant_output_mode, AssistantOutputMode::Compact);
     }
 
@@ -411,14 +431,20 @@ mod tests {
                 .unwrap();
         assert!(config.launch_at_login);
         let saved = serde_json::to_value(config).unwrap();
-        assert_eq!(saved.get("theme"), Some(&serde_json::Value::String("dark".into())));
+        assert_eq!(
+            saved.get("theme"),
+            Some(&serde_json::Value::String("dark".into()))
+        );
         assert!(saved.get("font_size").is_none());
     }
 
     #[test]
     fn theme_defaults_to_system_and_invalid_values_fall_back_to_system() {
         let default_config: Config = serde_json::from_str("{}").unwrap();
-        assert_eq!(serde_json::to_value(default_config).unwrap()["theme"], "system");
+        assert_eq!(
+            serde_json::to_value(default_config).unwrap()["theme"],
+            "system"
+        );
 
         let invalid: Config = serde_json::from_str(r#"{"theme":"sepia"}"#).unwrap();
         assert_eq!(serde_json::to_value(invalid).unwrap()["theme"], "system");
@@ -446,8 +472,10 @@ mod tests {
 
     #[test]
     fn roundtrip() {
-        let mut config = Config::default();
-        config.working_dir = Some("/tmp/x".to_string());
+        let config = Config {
+            working_dir: Some("/tmp/x".to_string()),
+            ..Config::default()
+        };
         let serialized = serde_json::to_string(&config).unwrap();
         assert_eq!(serde_json::from_str::<Config>(&serialized).unwrap(), config);
     }
@@ -455,13 +483,19 @@ mod tests {
     #[test]
     fn popup_shortcut_has_default() {
         let config = Config::default();
-        assert_eq!(config.shortcut_popup, format!("Alt+{}+P", primary_shortcut_modifier()));
+        assert_eq!(
+            config.shortcut_popup,
+            format!("Alt+{}+P", primary_shortcut_modifier())
+        );
     }
 
     #[test]
     fn partial_json_keeps_popup_default() {
         let config: Config = serde_json::from_str("{}").unwrap();
-        assert_eq!(config.shortcut_popup, format!("Alt+{}+P", primary_shortcut_modifier()));
+        assert_eq!(
+            config.shortcut_popup,
+            format!("Alt+{}+P", primary_shortcut_modifier())
+        );
     }
 
     #[test]
@@ -480,20 +514,29 @@ mod tests {
     #[test]
     fn window_shortcuts_default() {
         let c = Config::default();
-        assert_eq!(c.window_shortcuts.assistant, format!("{}+J", primary_shortcut_modifier()));
-        assert_eq!(c.window_shortcuts.view_split, format!("{}+3", primary_shortcut_modifier()));
+        assert_eq!(
+            c.window_shortcuts.assistant,
+            format!("{}+J", primary_shortcut_modifier())
+        );
+        assert_eq!(
+            c.window_shortcuts.view_split,
+            format!("{}+3", primary_shortcut_modifier())
+        );
     }
 
     #[test]
     fn partial_json_keeps_window_shortcuts_default() {
         let config: Config = serde_json::from_str("{}").unwrap();
-        assert_eq!(config.window_shortcuts.assistant, format!("{}+J", primary_shortcut_modifier()));
+        assert_eq!(
+            config.window_shortcuts.assistant,
+            format!("{}+J", primary_shortcut_modifier())
+        );
     }
 
     #[test]
-    fn ai_settings_default_to_six_empty_disabled_profiles() {
+    fn ai_settings_default_to_five_empty_disabled_profiles() {
         let settings = AiSettings::default();
-        assert_eq!(settings.providers.len(), 6);
+        assert_eq!(settings.providers.len(), 5);
         assert_eq!(settings.active_provider_id, None);
         for provider in AiProviderId::ALL {
             assert_eq!(settings.providers[&provider], AiProviderConfig::default());
@@ -528,13 +571,40 @@ mod tests {
     }
 
     #[test]
-    fn only_openai_anthropic_and_bailian_allow_base_urls() {
+    fn only_openai_and_anthropic_allow_base_urls() {
         assert!(AiProviderId::Openai.allows_base_url());
         assert!(AiProviderId::Anthropic.allows_base_url());
-        assert!(AiProviderId::Bailian.allows_base_url());
         assert!(!AiProviderId::Deepseek.allows_base_url());
         assert!(!AiProviderId::Kimi.allows_base_url());
         assert!(!AiProviderId::Zhipu.allows_base_url());
+    }
+
+    #[test]
+    fn retired_bailian_profile_is_dropped_without_resetting_other_settings() {
+        let mut config: Config = serde_json::from_str(r#"{"theme":"dark","ai_settings":{"providers":{"bailian":{"apiKey":"old","model":"qwen"},"openai":{"apiKey":"new","model":"gpt-5"}},"activeProviderId":"bailian"}}"#).unwrap();
+        config.ai_settings.normalize_loaded();
+        assert_eq!(config.theme, Theme::Dark);
+        assert_eq!(config.ai_settings.active_provider_id, None);
+        assert!(!config
+            .ai_settings
+            .providers
+            .contains_key(&AiProviderId::Unsupported));
+        assert_eq!(
+            config.ai_settings.providers[&AiProviderId::Openai].model,
+            "gpt-5"
+        );
+    }
+
+    #[test]
+    fn load_persists_retired_provider_cleanup() {
+        let dir = crate::testutil::tempdir();
+        let path = dir.path().join("config.json");
+        std::fs::write(&path, r#"{"ai_settings":{"providers":{"bailian":{"apiKey":"old","model":"qwen"}},"activeProviderId":"bailian"}}"#).unwrap();
+        let config = load(&path);
+        assert_eq!(config.ai_settings.active_provider_id, None);
+        let saved = std::fs::read_to_string(path).unwrap();
+        assert!(!saved.contains("bailian"));
+        assert!(!saved.contains("old"));
     }
 
     #[test]

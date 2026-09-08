@@ -1,6 +1,6 @@
 # src/assistant — AI assistant UI
 
-In-window AI tutor chat surface. Streams sidecar events (`agent://event`)
+In-window AI tutor chat surface. Streams Rust Agent events (`agent://event`)
 into a reconciled message list with incremental DOM updates.
 
 ## Module map
@@ -59,7 +59,7 @@ into a reconciled message list with incremental DOM updates.
   extensions are legacy test/compatibility modules and are not production-mounted.
 - `styles.css` — assistant card/bubble/diff/picker styling.
 
-Tool rows use the sidecar-provided safe `label`, semantic `category`, and stable
+Tool rows use the Rust Agent-provided safe `label`, semantic `category`, and stable
 `callId`; `action-card.ts` maps the category to a fixed inline SVG and keeps a
 tool-name fallback only for older events. Never render raw tool arguments or
 result bodies. Compact mode is the default and owns the streaming cursor.

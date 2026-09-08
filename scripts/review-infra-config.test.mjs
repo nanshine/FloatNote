@@ -46,16 +46,28 @@ test("review-only capability is excluded from the normal application config", as
   assert.deepEqual(reviewCapability.windows, ["main"]);
 });
 
-test("bundled agent resources map directly beneath Tauri's resource directory", async () => {
+test("bundled skills map directly beneath Tauri's resource directory", async () => {
   const config = await json("src-tauri/tauri.conf.json");
-  const runner = await readFile(new URL("src-tauri/src/agent/runner.rs", root), "utf8");
+  const service = await readFile(new URL("src-tauri/src/agent/service.rs", root), "utf8");
 
   assert.deepEqual(config.bundle.resources, {
-    "resources/sidecar/": "sidecar/",
     "resources/skills/": "skills/",
   });
-  assert.match(runner, /resource_dir\(\)[\s\S]*?\.join\("sidecar"\)/);
-  assert.match(runner, /resource_dir\(\)[\s\S]*?\.join\("skills"\)/);
+  assert.match(service, /resource_dir\(\)[\s\S]*?\.join\("skills"\)/);
+});
+
+test("release packaging contains the pinned Rust agent and no Node sidecar", async () => {
+  const config = await json("src-tauri/tauri.conf.json");
+  const pkg = await json("package.json");
+  const cargo = await readFile(new URL("src-tauri/Cargo.toml", root), "utf8");
+  assert.equal(config.bundle.externalBin, undefined);
+  assert.equal(config.bundle.macOS.entitlements, undefined);
+  assert.deepEqual(pkg.workspaces, ["shared/note-logic"]);
+  assert.equal(pkg.scripts["package:sidecar"], undefined);
+  assert.match(cargo, /rig-core = \{ version = "=0\.42\.0"/);
+  assert.match(cargo, /rig-agent = \{ version = "=0\.42\.0"/);
+  assert.doesNotMatch(cargo, /tauri-plugin-shell/);
+  await assert.rejects(readFile(new URL("src-tauri/Entitlements.plist", root), "utf8"));
 });
 
 test("preview releases use the root package version, DMG bundles, and ad-hoc signing", async () => {
@@ -82,7 +94,7 @@ test("GitHub Actions validate changes and publish both native macOS architecture
   assert.ok(rustJob, "CI must define a rust job");
   assert.match(
     rustJob,
-    /actions\/setup-node@v4[\s\S]*?npm ci[\s\S]*?npm run package:sidecar[\s\S]*?cargo test --lib/,
+    /actions\/setup-node@v4[\s\S]*?npm ci[\s\S]*?cargo test --lib/,
   );
   assert.match(ci, /cargo test --lib/);
   assert.match(ci, /cargo check --release/);

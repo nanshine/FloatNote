@@ -2,8 +2,8 @@ import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 const semverPattern = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*))?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/;
-const packagePaths = ["package.json", "sidecar/package.json", "shared/note-logic/package.json"];
-const lockPackagePaths = ["", "sidecar", "shared/note-logic"];
+const packagePaths = ["package.json", "shared/note-logic/package.json"];
+const lockPackagePaths = ["", "shared/note-logic"];
 
 function parseArgs(argv) {
   const positional = [];

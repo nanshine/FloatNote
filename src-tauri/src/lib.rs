@@ -27,14 +27,13 @@ mod testutil;
 
 use state::AppState;
 use std::sync::Mutex;
-use tauri::{Manager, WindowEvent};
+use tauri::{Emitter, Manager, WindowEvent};
 
 pub fn run() {
     // `mut` 仅在 debug 构建注册 wdio 插件时需要；release 下会被剥离，故关 unused_mut。
     #[allow(unused_mut)]
     let mut builder = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
@@ -97,38 +96,37 @@ pub fn run() {
                         None
                     }
                 };
+            let agent_service = std::sync::Arc::new(agent::AgentService::new());
+            let _ = agent_service.reload_skills(
+                agent::skill_paths_for_app(app.handle()),
+                config.disabled_skills.clone(),
+            );
+            if let Some(provider) = config.ai_settings.active_provider_id {
+                if let Some(profile) = config.ai_settings.providers.get(&provider) {
+                    match agent::build_agent_model(provider, profile) {
+                        Ok(model) => {
+                            let _ = agent_service.configure(model);
+                        }
+                        Err(error) => eprintln!("agent configuration failed: {error}"),
+                    }
+                }
+            }
             app.manage(AppState {
                 config: Mutex::new(config),
                 ai_settings_tx: tokio::sync::Mutex::new(()),
                 config_path: path,
-                agent: Mutex::new(None),
-                agent_ready: Mutex::new(false),
-                agent_spawn_error: Mutex::new(None),
+                agent: agent_service,
                 active_note: Mutex::new(None),
                 agent_seq: std::sync::atomic::AtomicU64::new(0),
                 watcher: Mutex::new(file_watcher),
                 write_suppress,
                 popup_cache: crate::popup::PopupCache::new(),
                 mutations: Mutex::new(agent::MutationStore::default()),
-                pending_skill_lists: Mutex::new(std::collections::HashMap::new()),
-                pending_agent_configs: Mutex::new(std::collections::HashMap::new()),
-                pending_agent_rewinds: Mutex::new(std::collections::HashMap::new()),
-                pending_agent_sessions: Mutex::new(std::collections::HashMap::new()),
-                pending_one_shots: Mutex::new(std::collections::HashMap::new()),
+                pending_permissions: Mutex::new(std::collections::HashMap::new()),
                 authorized_roots: state::AuthorizedRoots::default(),
             });
 
-            // 拉起 agent-sidecar；失败存入状态供前端查询，不阻断 app 启动。
-            match agent::spawn(app.handle()) {
-                Ok(handle) => {
-                    *app.state::<AppState>().agent.lock().unwrap() = Some(handle);
-                }
-                Err(error) => {
-                    eprintln!("agent sidecar spawn failed: {error}");
-                    *app.state::<AppState>().agent_spawn_error.lock().unwrap() =
-                        Some(format!("助手启动失败: {error}"));
-                }
-            }
+            let _ = app.emit("agent://event", agent::AgentEvent::Ready);
 
             #[cfg(target_os = "macos")]
             let _ = app
@@ -229,7 +227,6 @@ pub fn run() {
             commands::get_active_note,
             commands::get_assistant_state,
             commands::toggle_assistant,
-            commands::get_agent_status,
             commands::apply_shortcuts,
             commands::set_auto_popup_mode,
             commands::get_window_shortcuts,

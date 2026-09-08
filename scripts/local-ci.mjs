@@ -48,7 +48,6 @@ export function buildCommandPlan(argv, options = {}) {
   const rustRoot = path.join(root, "src-tauri");
   return [
     ...ciSteps(command, root, tag),
-    npmStep(command, ["run", "package:sidecar"], root),
     { command: "cargo", args: ["test", "--lib"], cwd: rustRoot },
     { command: "cargo", args: ["check"], cwd: rustRoot },
     { command: "cargo", args: ["check", "--release"], cwd: rustRoot },

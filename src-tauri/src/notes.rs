@@ -559,7 +559,7 @@ mod tests {
         let dir = tempdir();
         let src = dir.path().join("notes.txt");
         std::fs::write(&src, b"nope").unwrap();
-        let results = import_image_files(&[src.to_string_lossy().to_string()], &dir.path());
+        let results = import_image_files(&[src.to_string_lossy().to_string()], dir.path());
         let (_, _, err) = &results[0];
         assert!(err.is_some());
     }

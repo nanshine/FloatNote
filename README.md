@@ -66,7 +66,7 @@
 | --- | --- |
 | 基础能力 | 读取与检索项目内容、创建与修改文章、更新行动清单、添加与管理标签、搜索与读取网页 |
 | 内置 Skills | 问到真懂、梳理材料、下一步、写出所想 |
-| AI 提供商 | OpenAI、Anthropic、DeepSeek、Kimi、智谱、阿里云百炼 |
+| AI 提供商 | OpenAI（支持自定义兼容地址）、Anthropic、DeepSeek、Kimi、智谱 |
 
 ## 笔记直接保存在本地
 

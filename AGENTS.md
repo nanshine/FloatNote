@@ -3,7 +3,7 @@
 ## Project Structure & Module Organization
 
 FloatNote is a Tauri 2 desktop app with a Vanilla TypeScript/Vite frontend.
-Four components; module-specific guidance exists where it is most needed:
+Three components; module-specific guidance exists where it is most needed:
 
 - `src/` — frontend. Vite MPA HTML entries remain at root; `src/platform/`
   owns Tauri commands/events and shared DTOs, `src/shared/` owns cross-feature
@@ -11,15 +11,13 @@ Four components; module-specific guidance exists where it is most needed:
   `src/popup/`, `src/settings/` own feature UI.
 - `src-tauri/` — Rust backend. `src-tauri/src/` (see its `AGENTS.md`):
   `state.rs` (managed `AppState`), `commands.rs` + `commands/` (thin command
-  adapters), `agent/` (sidecar protocol, launch and handlers),
+  adapters), `agent/` (in-process Rig runtime, sessions, tools and permissions),
   `notes.rs`/`project.rs`/`versions.rs`
   (note file ops + history), `chat_history.rs`, `paths.rs`, `watcher.rs`,
   `source.rs` (macOS), `testutil.rs`, and window/tray/shortcut wiring.
 - `shared/note-logic/` — workspace package `@floatnote/note-logic`: pure
-  logic shared by frontend + sidecar (`annotations/codec`, range/context
+  frontend note logic (`annotations/codec`, range/context
   transforms, `tags/model`, `tags/palette`). See its `AGENTS.md`.
-- `sidecar/` — Node AI-agent process over stdio JSONL. `bundle.mjs` produces
-  the release ESM bundle and `prepare-tauri.mjs` stages its bundled runtime.
 - A **project space** is a subfolder inside the working directory holding up
   to three Markdown kinds: `_inbox.md` (continuous capture text with v2
   range-annotation metadata), `_tasks.md`
@@ -27,7 +25,7 @@ Four components; module-specific guidance exists where it is most needed:
   prefix, defaulting to `piece.md`). The `_` prefix alone distinguishes
   system files from pieces. Loose root `.md` files are legacy flat notes.
 - `docs/architecture/` documents the system shape: `overview.md`
-  (top-level map), `frontend.md`, `backend.md`, `sidecar.md`,
+  (top-level map), `frontend.md`, `backend.md`, `agent-runtime.md`,
   `data-flow.md`, `runtime-boundaries.md`, `packaging.md`, and
   `security.md`. `docs/development/` covers working on the app:
   `setup.md`, `cross-platform.md`, `testing.md`, `design-system.md`,
@@ -35,24 +33,23 @@ Four components; module-specific guidance exists where it is most needed:
   records (`NNNN-*.md`) plus `README.md`. These are stable project
   documentation; dated specs/plans are historical implementation
   records. `dist/`, `src-tauri/target/`, `src-tauri/binaries/`, and
-  generated sidecar resources are generated artifacts.
+  generated build resources are generated artifacts.
 
 ## Build, Test, and Development Commands
 
 - `npm run dev` starts the Vite frontend at the dev URL used by Tauri.
 - `npm run tauri dev` runs the full desktop app in development mode.
-- `npm run build` builds the frontend and sidecar.
-- `npm test` runs frontend/shared and sidecar unit tests.
-- `npm run check` runs tests, builds, and the sidecar JSONL smoke test.
+- `npm run build` builds the frontend.
+- `npm test` runs frontend/shared and infrastructure unit tests.
+- `npm run check` runs frontend/infrastructure tests and builds.
 - `npm run ci:local` starts from `npm ci`, then runs the version check and
   complete JavaScript/TypeScript gate. Agents must run it before declaring
   dependency or JavaScript/TypeScript changes complete.
 - `npm run release:check -- --tag vX.Y.Z` runs the clean-install gate,
-  validates the release tag, stages the sidecar, and runs Rust library,
+  validates the release tag and runs Rust library,
   debug, and release checks. Run it before creating a release tag.
 - `npm run review:ui` runs browser-mode UI regressions against real frontend components without a Tauri binary.
 - `npm run review:native:doctor` starts the current Tauri dev source and probes the embedded WebDriver lifecycle.
-- `npm run package:sidecar` stages the release sidecar resource/runtime.
 - `npm run tauri build` creates the packaged desktop app.
 
 Run commands from the repository root unless a Tauri/Rust command specifically requires `src-tauri/`.

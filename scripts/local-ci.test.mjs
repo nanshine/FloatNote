@@ -21,7 +21,7 @@ test("ci mode reproduces the JavaScript CI gate in order", async () => {
   ]);
 });
 
-test("release mode validates the tag and adds sidecar and Rust checks", async () => {
+test("release mode validates the tag and adds Rust checks", async () => {
   const { buildCommandPlan } = await loadModule();
   const root = path.resolve("/workspace/floatnote");
   const rustRoot = path.join(root, "src-tauri");
@@ -32,7 +32,6 @@ test("release mode validates the tag and adds sidecar and Rust checks", async ()
       { command: "npm", args: ["ci"], cwd: root },
       { command: "npm", args: ["run", "version:check", "--", "--tag", "v0.2.0"], cwd: root },
       { command: "npm", args: ["run", "check"], cwd: root },
-      { command: "npm", args: ["run", "package:sidecar"], cwd: root },
       { command: "cargo", args: ["test", "--lib"], cwd: rustRoot },
       { command: "cargo", args: ["check"], cwd: rustRoot },
       { command: "cargo", args: ["check", "--release"], cwd: rustRoot },

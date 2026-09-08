@@ -1,16 +1,18 @@
 //! Managed app state: the single `AppState` struct constructed at startup
-//! and shared across Tauri commands, the sidecar reader thread, the popup,
+//! and shared across Tauri commands, the Rust Agent, the popup,
 //! and the selection monitor. Pulled out of `commands.rs` so the command file
 //! is a thin handler layer and the state root has its own home.
 
-use crate::agent::{ActiveNote, AgentHandle, MutationStore, SkillSummary};
+use crate::agent::{ActiveNote, AgentService, MutationStore};
 use crate::config::Config;
 use crate::popup::PopupCache;
 use crate::watcher::{FileWatcher, SuppressList};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::atomic::AtomicU64;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
+
+type PermissionDecision = tokio::sync::oneshot::Sender<Result<(String, String), String>>;
 
 /// Project roots that have been explicitly opened by this app instance.
 /// Custom image URLs are constrained to these roots so another local
@@ -41,19 +43,22 @@ impl AuthorizedRoots {
             .iter()
             .any(|root| path.starts_with(root))
     }
+
+    pub fn allows_project(&self, path: &std::path::Path) -> bool {
+        let Ok(path) = path.canonicalize() else {
+            return false;
+        };
+        self.roots.lock().unwrap().iter().any(|root| root == &path)
+    }
 }
 
 pub struct AppState {
     pub config: Mutex<Config>,
-    /// Serializes provider snapshot → sidecar → disk → memory transactions.
+    /// Serializes provider runtime → disk → memory transactions.
     pub ai_settings_tx: tokio::sync::Mutex<()>,
     pub config_path: PathBuf,
-    /// 活的 sidecar 句柄；None 表示尚未起或已断开。
-    pub agent: Mutex<Option<AgentHandle>>,
-    /// sidecar 是否已发 `ready`。
-    pub agent_ready: Mutex<bool>,
-    /// sidecar 启动失败时记录错误信息，供前端初始化时查询。
-    pub agent_spawn_error: Mutex<Option<String>>,
+    /// In-process Rust agent runtime.
+    pub agent: Arc<AgentService>,
     /// agent_send 记录的当前活动笔记，供 apply_write 定位文件。
     pub active_note: Mutex<Option<ActiveNote>>,
     /// 单调递增的 requestId 计数器。
@@ -66,22 +71,8 @@ pub struct AppState {
     pub popup_cache: PopupCache,
     /// Structured mutation reviews and one-use approval leases.
     pub mutations: Mutex<MutationStore>,
-    /// `agent_list_skills` 的 host 侧一次性等待表：call_id → oneshot sender。
-    /// reader 线程收到 `SkillsList` 时取出 sender 解除等待。
-    pub pending_skill_lists:
-        Mutex<HashMap<String, tokio::sync::oneshot::Sender<Vec<SkillSummary>>>>,
-    /// Correlated configure replies used by transactional provider changes.
-    pub pending_agent_configs:
-        Mutex<HashMap<String, tokio::sync::oneshot::Sender<Result<(), String>>>>,
-    /// Correlated rewind replies; the frontend only truncates once this resolves successfully.
-    pub pending_agent_rewinds:
-        Mutex<HashMap<String, tokio::sync::oneshot::Sender<Result<(), String>>>>,
-    /// Correlated new-session acknowledgements; prompt must not race installation.
-    pub pending_agent_sessions:
-        Mutex<HashMap<String, tokio::sync::oneshot::Sender<Result<(), String>>>>,
-    /// Correlated no-session AI task replies.
-    pub pending_one_shots:
-        Mutex<HashMap<String, tokio::sync::oneshot::Sender<Result<String, String>>>>,
+    /// Pending human decisions for mutation tools.
+    pub pending_permissions: Mutex<HashMap<String, PermissionDecision>>,
     /// Roots authorised by opening/watching a project in this app instance.
     pub authorized_roots: AuthorizedRoots,
 }

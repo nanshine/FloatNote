@@ -7,6 +7,6 @@ npm install
 npm run tauri dev
 ```
 
-只启动 WebView 前端时使用 `npm run dev`。完整桌面流程使用 `npm run tauri dev`，它会启动 Vite 并由 Tauri 拉起应用；debug sidecar 使用本仓库安装的 `tsx`。
+只启动 WebView 前端时使用 `npm run dev`。完整桌面流程使用 `npm run tauri dev`，它会启动 Vite 并在 Tauri 进程中运行 Rust Agent。
 
-常用验证命令见 [测试与质量门禁](testing.md)。发布工件与外部 Node runtime 的准备见 [打包架构](../architecture/packaging.md) 和 [发布流程](release.md)。
+常用验证命令见 [测试与质量门禁](testing.md)。发布结构见 [打包架构](../architecture/packaging.md) 和 [发布流程](release.md)。

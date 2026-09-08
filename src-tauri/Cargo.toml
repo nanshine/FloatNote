@@ -26,7 +26,6 @@ notify = "7"
 tauri-plugin-autostart = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-global-shortcut = "2"
-tauri-plugin-shell = "2"
 # WebdriverIO 原生诊断仅由 e2e-wdio feature 启用。
 tauri-plugin-wdio = { version = "1", optional = true }
 tauri-plugin-wdio-webdriver = { version = "1", optional = true }
@@ -36,6 +35,12 @@ percent-encoding = "2"
 tokio = { version = "1", features = ["sync", "time"] }
 cap-std = "4"
 getrandom = "0.3"
+futures = "0.3"
+regex = "1"
+unicode-normalization = "0.1"
+reqwest = { version = "0.13", default-features = false, features = ["rustls", "charset", "http2", "json", "stream", "system-proxy"] }
+rig-core = { version = "=0.42.0", default-features = false, features = ["reqwest", "rustls"] }
+rig-agent = { version = "=0.42.0", default-features = false }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 macos-accessibility-client = "0.0.1"

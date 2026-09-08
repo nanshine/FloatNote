@@ -1,18 +1,32 @@
-//! agent-sidecar 生命周期、行分隔 JSON 协议与受控工作区事务。
+//! In-process Rust/Rig Agent runtime and controlled workspace transactions.
 //!
-//! Rust 是唯一状态源：拉起 Node sidecar 子进程，单独线程按行读 stdout，
-//! 把流式事件经 Tauri `agent://event` 广播给所有助手视图，并把虚拟工作区
-//! 读取、审核租约和原子提交交给 Rust host 处理。
+//! Rust is the sole runtime and authority: Rig drives provider streaming and
+//! tool calls, while FloatNote owns sessions, Skills, permissions and files.
 //!
 //! 模块拆分：
-//! - [`protocol`] — Host ↔ sidecar 的 serde 协议类型。
+//! - [`protocol`] — stable WebView event and domain DTOs.
+//! - [`provider`] / [`service`] — pinned Rig adapter and lifecycle.
+//! - [`session`] / [`skills`] — durable branches, Pi import and Skill snapshots.
+//! - [`tools`] — Rig tools plus streaming lifecycle hooks.
 //! - [`workspace`] — 虚拟工作区读取与 mutation transaction。
-//! - [`runner`] — sidecar spawn、stdout 读循环、消息分派、退出处理。
 
+mod note_logic;
+mod presentation;
 mod protocol;
-mod runner;
+mod provider;
+mod rig_adapter;
+mod service;
+mod session;
+mod skills;
+mod tools;
 pub(crate) mod workspace;
 
+pub(crate) use note_logic::*;
+pub use presentation::*;
 pub use protocol::*;
-pub use runner::*;
+pub use provider::*;
+pub use service::*;
+pub use session::*;
+pub use skills::*;
+pub(crate) use tools::*;
 pub(crate) use workspace::*;

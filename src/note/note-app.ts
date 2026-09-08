@@ -1448,11 +1448,6 @@ async function init() {
   await loadShortcuts();
   await listen("window-shortcuts-changed", () => { void loadShortcuts(); });
 
-  // 检查 sidecar 启动状态：若有错误，在助手面板显示提示。
-  const agentStatus = await invoke<{ ready: boolean; error: string | null }>("get_agent_status");
-  if (agentStatus.error) {
-    assistantHandle.showError(agentStatus.error);
-  }
 }
 
 void init();

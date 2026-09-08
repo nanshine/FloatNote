@@ -7,7 +7,7 @@
     "frontendDist": "../dist",
     "devUrl": "http://localhost:1422",
     "beforeDevCommand": "npm run dev",
-    "beforeBuildCommand": "npm run package:sidecar && npm run build"
+    "beforeBuildCommand": "npm run build"
   },
   "app": {
     "withGlobalTauri": false,
@@ -74,14 +74,11 @@
       "icons/icon.ico"
     ],
     "resources": {
-      "resources/sidecar/": "sidecar/",
       "resources/skills/": "skills/"
     },
-    "externalBin": ["binaries/floatnote-node"],
     "macOS": {
       "signingIdentity": "-",
-      "hardenedRuntime": true,
-      "entitlements": "./Entitlements.plist"
+      "hardenedRuntime": true
     }
   }
 }

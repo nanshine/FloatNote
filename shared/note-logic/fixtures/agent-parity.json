@@ -1,0 +1,18 @@
+[
+  {
+    "name": "unicode annotation",
+    "raw": "<!-- floatnote:tags:v2 focus=\"重点\"|c=#e5484d -->\n你<!-- floatnote:ann:v2 id=ann-1 tag=focus start -->好😀<!-- floatnote:ann:v2 id=ann-1 end -->",
+    "markdown": "你好😀",
+    "tags": [{ "id": "focus", "name": "重点", "color": "#e5484d" }],
+    "annotations": [{ "id": "ann-1", "tagId": "focus", "from": 1, "to": 4 }],
+    "quoteSources": []
+  },
+  {
+    "name": "quote source",
+    "raw": "> [!quote] Example<!-- floatnote:bid=com.example.app -->\n> body",
+    "markdown": "> [!quote] Example\n> body",
+    "tags": [],
+    "annotations": [],
+    "quoteSources": [{ "cardFrom": 0, "bundleId": "com.example.app" }]
+  }
+]

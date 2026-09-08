@@ -7,7 +7,7 @@ import { createDockDropdown } from "./dock-dropdown.js";
  * 下拉生命周期复用 `dock-dropdown.ts`（挂在 `.assistant-dock`：input-wrap 兄弟，
  * 避开其 overflow:hidden）+ `[hidden]` 切换 + `replaceChildren` + 外点关闭。
  *
- * 选中后把 `@query` 段替换为 `@<name> `（纯文本提及，不改 sidecar/agent_send 协议）。
+ * 选中后把 `@query` 段替换为 `@<name> `（纯文本提及，不改 agent_send 协议）。
  * 与 skill 下拉互斥：打开时调 `closeSkill()`，由 assistant 在 skill 下拉打开时调本件 close。
  */
 

@@ -31,14 +31,14 @@ async fn save_ai_provider_inner(
         .insert(provider_id, normalized.clone());
     let updates_runtime = old.ai_settings.active_provider_id == Some(provider_id);
     if updates_runtime {
-        super::agent::configure_agent(&state, provider_id, &normalized).await?;
+        super::agent::configure_agent(state, provider_id, &normalized).await?;
     }
     if let Err(error) = crate::config::save(&state.config_path, &candidate) {
         let recovery = if updates_runtime {
             if let Some(previous) = old.ai_settings.providers.get(&provider_id) {
-                super::agent::configure_agent(&state, provider_id, previous).await
+                super::agent::configure_agent(state, provider_id, previous).await
             } else {
-                super::agent::clear_agent_configuration(&state).await
+                super::agent::clear_agent_configuration(state).await
             }
         } else {
             Ok(())
@@ -82,18 +82,18 @@ async fn set_active_ai_provider_inner(
             .get(&provider)
             .ok_or("未知的 AI 提供商")?
             .normalized_for(provider)?;
-        super::agent::configure_agent(&state, provider, &profile).await?;
+        super::agent::configure_agent(state, provider, &profile).await?;
     }
     candidate.ai_settings.active_provider_id = provider_id;
     if let Err(error) = crate::config::save(&state.config_path, &candidate) {
         let recovery = if let Some(previous_provider) = old.ai_settings.active_provider_id {
             if let Some(previous) = old.ai_settings.providers.get(&previous_provider) {
-                super::agent::configure_agent(&state, previous_provider, previous).await
+                super::agent::configure_agent(state, previous_provider, previous).await
             } else {
-                super::agent::clear_agent_configuration(&state).await
+                super::agent::clear_agent_configuration(state).await
             }
         } else {
-            super::agent::clear_agent_configuration(&state).await
+            super::agent::clear_agent_configuration(state).await
         };
         return match recovery {
             Ok(()) => Err(error.to_string()),
@@ -250,20 +250,14 @@ mod tests {
             config: Mutex::new(config),
             ai_settings_tx: tokio::sync::Mutex::new(()),
             config_path,
-            agent: Mutex::new(None),
-            agent_ready: Mutex::new(false),
-            agent_spawn_error: Mutex::new(None),
+            agent: std::sync::Arc::new(crate::agent::AgentService::new()),
             active_note: Mutex::new(None),
             agent_seq: AtomicU64::new(0),
             watcher: Mutex::new(None),
             write_suppress: crate::watcher::new_suppress_list(),
             popup_cache: crate::popup::PopupCache::default(),
             mutations: Mutex::new(crate::agent::MutationStore::default()),
-            pending_skill_lists: Mutex::new(HashMap::new()),
-            pending_agent_configs: Mutex::new(HashMap::new()),
-            pending_agent_rewinds: Mutex::new(HashMap::new()),
-            pending_agent_sessions: Mutex::new(HashMap::new()),
-            pending_one_shots: Mutex::new(HashMap::new()),
+            pending_permissions: Mutex::new(HashMap::new()),
             authorized_roots: AuthorizedRoots::default(),
         }
     }
@@ -283,7 +277,7 @@ mod tests {
     }
 
     #[test]
-    fn inactive_provider_save_commits_to_memory_and_disk_without_sidecar() {
+    fn inactive_provider_save_commits_to_memory_and_disk_without_runtime_swap() {
         let dir = crate::testutil::tempdir();
         let path = dir.path().join("config.json");
         let state = state_at(path.clone(), Config::default());
@@ -313,7 +307,7 @@ mod tests {
     }
 
     #[test]
-    fn deactivation_commits_without_contacting_the_sidecar() {
+    fn deactivation_commits_and_clears_the_runtime_model() {
         let dir = crate::testutil::tempdir();
         let path = dir.path().join("config.json");
         let mut config = Config::default();

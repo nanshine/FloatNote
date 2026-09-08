@@ -4,15 +4,12 @@
 | --- | --- |
 | `npm run test:frontend` | 前端与 shared 纯逻辑 Vitest 测试 |
 | `npm run test:infra` | review 编排、WebDriver 探针和配置隔离测试 |
-| `npm run test:sidecar` | sidecar protocol、工具和发布路径测试 |
 | `npm run build:frontend` | TypeScript 类型检查与 Vite MPA 构建 |
-| `npm run build:sidecar` | sidecar TypeScript 编译 |
-| `npm run smoke:sidecar` | ESM bundle 的 JSONL ready 握手 |
-| `npm run check` | 全部 JS/TS 测试、构建与 sidecar smoke |
+| `npm run check` | 全部前端/基础设施测试与构建 |
 | `npm run ci:local` | 从 `npm ci` 开始，随后执行版本一致性检查与完整 JS/TS 门禁 |
-| `npm run release:check -- --tag vX.Y.Z` | 校验发布标签、完整 JS/TS 门禁、sidecar staging 与全部 Rust 门禁 |
-| `cargo test --lib` | Rust 领域、协议和 adapter 单测 |
-| `cargo check --release` | 发布分支（包括 external sidecar 启动路径）编译 |
+| `npm run release:check -- --tag vX.Y.Z` | 校验发布标签、完整 JS/TS 与 Rust 门禁 |
+| `cargo test --lib` | Rust 领域、Rig adapter、会话和工具单测 |
+| `cargo check --release` | 发布分支编译 |
 | `npm run review:ui` | Chrome 中挂载真实前端组件，回归 UI 与交互状态 |
 | `npm run review:native:doctor` | 从当前源码启动 Tauri dev，探测 embedded WebDriver 状态和会话生命周期 |
 
@@ -70,6 +67,6 @@ npm run release:check -- --tag v0.2.0
 
 ## Agent 虚拟工作区的跨平台证据
 
-当前自动化覆盖 Windows 风格反斜杠与盘符绝对路径拒绝、路径大小写/文件名规则、CRLF clean Markdown 搜索，以及 create-only/同名竞态。macOS 上的完整 Rust、sidecar 和浏览器 UI 门禁通过不代表 Windows 原生 UI 已验证。
+当前自动化覆盖 Windows 风格反斜杠与盘符绝对路径拒绝、路径大小写/文件名规则、CRLF clean Markdown 搜索、Pi session 导入，以及 create-only/同名竞态。macOS 上的完整 Rust 和浏览器 UI 门禁通过不代表 Windows 原生 UI 已验证。
 
-Windows 发布前仍需人工复核：project picker 与 active-note 路径、Skill 目录 realpath、审批弹窗、piece create/rewrite/snapshot、外部编辑造成的 stale commit、watcher 自写抑制，以及 packaged sidecar 的启动与退出。
+Windows 发布前仍需人工复核：project picker 与 active-note 路径、Skill 目录 realpath、审批弹窗、piece create/rewrite/snapshot、外部编辑造成的 stale commit、watcher 自写抑制，以及五个 Provider 的流式请求。

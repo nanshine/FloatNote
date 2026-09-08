@@ -22,7 +22,7 @@ npm run tauri dev
 从 `main` 拉分支，改完后确保测试通过：
 
 ```bash
-npm test              # 前端、shared、sidecar 单元测试
+npm test              # 前端、shared 与基础设施单元测试
 npm run build         # 类型检查 + 构建
 ```
 

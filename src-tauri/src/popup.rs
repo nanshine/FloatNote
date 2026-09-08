@@ -135,9 +135,8 @@ impl Default for PopupCache {
 
 use tauri::{AppHandle, Emitter, Manager, State};
 
-use crate::agent::{HostToSidecar, OneShotTask};
+use crate::agent::translate_system_prompt;
 use crate::state::AppState;
-use std::sync::atomic::Ordering as AtomicOrdering;
 
 const MAX_AI_SELECTION_CHARS: usize = 12_000;
 
@@ -163,9 +162,6 @@ fn ensure_ai_ready(state: &AppState) -> Result<(), String> {
     };
     if !configured {
         return Err("尚未启用 AI 提供商".into());
-    }
-    if !*state.agent_ready.lock().unwrap() {
-        return Err("AI 助手暂时不可用，请稍后重试".into());
     }
     Ok(())
 }
@@ -228,35 +224,15 @@ pub async fn translate_popup_selection(
 ) -> Result<String, String> {
     let capture = validate_ai_capture(state.popup_cache.snapshot(generation_id))?;
     ensure_ai_ready(&state)?;
-    let seq = state.agent_seq.fetch_add(1, AtomicOrdering::Relaxed) + 1;
-    let call_id = format!("one{seq}");
-    let (tx, rx) = tokio::sync::oneshot::channel();
-    state
-        .pending_one_shots
-        .lock()
-        .unwrap()
-        .insert(call_id.clone(), tx);
-    let sent = match state.agent.lock().unwrap().as_mut() {
-        Some(agent) => agent
-            .send(&HostToSidecar::OneShot {
-                call_id: call_id.clone(),
-                task: OneShotTask::Translate,
-                input: capture.text,
-            })
-            .map_err(|error| error.to_string()),
-        None => Err("AI 助手暂时不可用，请稍后重试".into()),
-    };
-    if let Err(error) = sent {
-        crate::agent::expire_one_shot_pending(&state.pending_one_shots, &call_id);
-        return Err(error);
-    }
-    match tokio::time::timeout(std::time::Duration::from_secs(45), rx).await {
-        Ok(Ok(result)) => result,
-        Ok(Err(_)) => Err("AI 助手暂时不可用，请稍后重试".into()),
-        Err(_) => {
-            crate::agent::expire_one_shot_pending(&state.pending_one_shots, &call_id);
-            Err("请求超时，请重试".into())
-        }
+    let system = translate_system_prompt(&capture.text);
+    match tokio::time::timeout(
+        std::time::Duration::from_secs(45),
+        state.agent.one_shot(system, capture.text, 16_384),
+    )
+    .await
+    {
+        Ok(result) => result,
+        Err(_) => Err("请求超时，请重试".into()),
     }
 }
 
