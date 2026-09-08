@@ -2,7 +2,7 @@ import { createIcon } from "../shared/ui/icon";
 
 export function settingsShellMarkup(): string {
   return `<main class="settings-window">
-    <header class="settings-titlebar" data-tauri-drag-region aria-hidden="true"></header>
+    <header class="settings-titlebar"><div class="titlebar-drag" data-tauri-drag-region></div></header>
     <div class="settings-shell">
       <nav class="settings-nav" aria-label="设置分类">
         <button class="settings-tab is-active" data-tab="general" aria-current="page">${createIcon({ phosphor: "ph ph-sliders-horizontal" }).outerHTML}<span>通用</span></button>

@@ -41,6 +41,11 @@ body {
   user-select: none;
 }
 
+/* Windows 自绘标题栏：左侧不再为红绿灯让位，右侧关闭钮贴窗口边缘。 */
+html.custom-chrome .titlebar {
+  padding: 0 0 0 10px;
+}
+
 .titlebar-drag {
   flex: 1;
   align-self: stretch;

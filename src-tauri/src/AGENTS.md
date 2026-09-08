@@ -37,6 +37,11 @@ entry that calls `floatnote::run()`.
 - `popup.rs`, `popup_hover.rs`, `shortcuts.rs`, `tray.rs`, `windows.rs`,
   `config.rs` — generation-aware popup cache, macOS passive hover relay, global
   shortcuts, tray menu, window management, and config load/save.
+- `window_chrome.rs` — Windows-only custom titlebar support: runtime
+  `set_decorations(false)` for `main`/`settings` plus DWM rounded corners and
+  shadow; the frontend draws min/max/close in `src/shared/ui/window-caption.ts`.
+  macOS keeps the native Overlay traffic lights, so the module stays fully
+  `cfg(target_os = "windows")`-gated.
 - `testutil.rs` — `#[cfg(test)]` shared `TempDir`/`tempdir()` for tests.
 
 AI settings are one fixed `AiSettings` aggregate in `config.rs`: six provider

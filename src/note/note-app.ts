@@ -63,6 +63,7 @@ import {
   setTasksToggle,
   setViewSeg,
 } from "./topbar";
+import { mountResizeEdges } from "../shared/ui/window-caption";
 import { canSplit } from "./split";
 import { buildBindings, installShortcuts, type ShortcutActions } from "./shortcuts";
 import { WINDOW_SHORTCUT_DEFAULTS, type WindowShortcutId } from "../shared/shortcuts";
@@ -1342,13 +1343,17 @@ renderTopbar(document.querySelector("#topbar-root")!, {
 // #piece-doc-header 已在 app.innerHTML 中就位，挂载文档头到「写作」栏顶部。
 mountPieceHeader();
 
-// 标题栏（第一行）：左侧留给系统红绿灯、可拖拽，最右端助手 icon。
+// 标题栏（第一行）：macOS 左侧留给系统红绿灯、可拖拽，最右端助手 icon；
+// Windows 由 renderTitlebar 内补自绘窗口按钮。
 renderTitlebar(document.querySelector("#titlebar-root")!, {
   // 单击：开/关整个助手。
   onAssistantToggle: async () => {
     await toggleAssistantFromChrome();
   },
 });
+
+// Windows 无边框窗口的边缘缩放手柄（非 Windows 早退）。
+mountResizeEdges();
 
 // resize 过渡门控：连续拖拽（事件间隔 <120ms）时关掉过渡保证不卡顿；
 // 离散跳变（双击标题栏放大、开关助手）是孤立事件，保留过渡 → 平滑动画。

@@ -20,6 +20,8 @@ mod trash;
 mod tray;
 mod versions;
 mod watcher;
+#[cfg(target_os = "windows")]
+mod window_chrome;
 mod windows;
 
 #[cfg(test)]
@@ -155,6 +157,17 @@ pub fn run() {
                         let _ = win.hide();
                     }
                 });
+            }
+
+            // Windows：去掉系统标题栏（左上角图标 + 系统色按钮区），
+            // min/max/close 改由前端自绘；macOS 保留 Overlay 原生红绿灯。
+            #[cfg(target_os = "windows")]
+            {
+                for label in ["main", "settings"] {
+                    if let Some(window) = app.get_webview_window(label) {
+                        window_chrome::strip_decorations(&window);
+                    }
+                }
             }
 
             tray::build_tray(app.handle())?;
