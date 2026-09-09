@@ -67,3 +67,11 @@ Skill 目录清单由 Rust host 直接从打包资源、debug `resources/skills`
 `Config.onboarding` 保存版本、状态、步骤及首次采集成功标记。配置文件不存在代表新安装；已有文件缺少该字段时迁移为 `completed`，不会向升级用户自动弹出。`get_onboarding_state` / `set_onboarding_state` 与 `onboarding://changed` 构成跨窗口合同，debug-only preview 则只保存在 `AppState` 内存并广播 `onboarding://preview-changed`。
 
 `paths.rs` 在 setup 最早阶段解析一次运行档案。release 继续使用平台 `app_config_dir/config.json` 与 `~/.floatnote`；debug 使用 `src-tauri/target/dev-profiles/{profile}` 下的 `config.json`、`data/chat-history`、`data/skills` 和 `workspace`，其中 `FLOATNOTE_DEV_PROFILE` 仅在 debug 生效。所有聊天历史和导入 Skill 均通过这一解析器取路径。
+
+`get_ai_readiness` 在配置事务锁内返回 `unconfigured`、`disabled`、`incomplete`
+（含不带凭证的说明）、`runtime_unavailable` 或 `ready`，同时检查配置与实际 model，
+不发出网络请求；`retry_ai_configuration` 可重建当前 model。所有提供商保存成功后均发出
+`agent://configuration-changed`，助手收到事件后重新查询状态。读取已有 session 不要求启用模型，
+发送仍由后端检查。`open_ai_settings` 将导航目标保存到独立的 `SettingsNavigation`
+managed state，设置前端在监听就绪后调用 `take_settings_navigation` 消费，跨 macOS/Windows
+均不依赖窗口加载时序或延时。

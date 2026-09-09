@@ -126,6 +126,7 @@ pub fn run() {
                     }
                 }
             }
+            app.manage(windows::SettingsNavigation::default());
             app.manage(AppState {
                 config: Mutex::new(config),
                 ai_settings_tx: tokio::sync::Mutex::new(()),
@@ -264,6 +265,9 @@ pub fn run() {
             popup::complete_popup_question,
             popup::translate_popup_selection,
             popup::open_ai_settings,
+            windows::take_settings_navigation,
+            commands::get_ai_readiness,
+            commands::retry_ai_configuration,
             popup::dismiss_popup,
         ])
         .run(tauri::generate_context!())

@@ -9,17 +9,12 @@ import { mountShortcutSettings } from "./shortcuts";
 import { mountTabs, settingsShellMarkup } from "./shell";
 import type { Config } from "./types";
 import { mountOutputMode } from "./output-mode";
-import { listen } from "@tauri-apps/api/event";
+import { connectSettingsNavigation } from "./navigation";
 import { getRuntimeProfile } from "../platform/onboarding";
 import { mountOnboardingSettings } from "./onboarding-lab";
 
 const app = document.querySelector<HTMLElement>("#app")!;
-let navigate: ((name: string) => void) | null = null;
-let pendingNavigation: string | null = null;
-void listen<string>("settings://navigate", (event) => {
-  if (navigate) navigate(event.payload);
-  else pendingNavigation = event.payload;
-});
+let disconnectNavigation: (() => void) | null = null;
 
 async function render(): Promise<void> {
   initializeAppearance();
@@ -29,8 +24,8 @@ async function render(): Promise<void> {
     config.ai_settings ??= createEmptyAiSettings();
     config.assistant_output_mode = config.assistant_output_mode === "detailed" ? "detailed" : "compact";
     app.innerHTML = settingsShellMarkup();
-    navigate = mountTabs(app);
-    if (pendingNavigation) { navigate(pendingNavigation); pendingNavigation = null; }
+    disconnectNavigation?.();
+    disconnectNavigation = await connectSettingsNavigation(mountTabs(app));
     const save = () => invoke<void>("set_config", { newConfig: config });
     mountGeneralSettings(app.querySelector<HTMLElement>("#general-settings")!, config, save);
     const runtime = await getRuntimeProfile();

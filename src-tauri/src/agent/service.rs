@@ -60,6 +60,10 @@ impl AgentService {
         Self::default()
     }
 
+    pub fn is_configured(&self) -> bool {
+        self.model.lock().unwrap().is_some()
+    }
+
     pub fn configure(&self, model: AgentModel) -> Result<(), String> {
         if !self.active_runs.lock().unwrap().is_empty() {
             return Err("请等待当前回复完成后再切换 AI 提供商".into());
@@ -114,9 +118,6 @@ impl AgentService {
         conversation_id: String,
         session_file: String,
     ) -> Result<(String, Vec<ChatDisplayMessage>), String> {
-        if self.model.lock().unwrap().is_none() {
-            return Err("尚未配置或启用 AI 提供商，请前往设置完成配置并启用。".into());
-        }
         let session = AgentSession::open(Path::new(&session_file))?;
         if session.id() != conversation_id {
             return Err("会话文件与对话 ID 不匹配".into());

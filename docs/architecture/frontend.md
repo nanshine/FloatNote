@@ -28,14 +28,14 @@ FloatNote 使用 Vite 多页面应用：根目录 HTML 是各 WebView 入口。`
   静默覆盖。tag filter 使用独立只读 projection，不改写编辑文档。
   `piece-switcher.ts` 同时管理版本菜单与预览操作条；版本预览保存完整 EditorState
   checkpoint、以无历史替换展示快照，退出后恢复原状态。
-- `src/assistant/` 管理流式聊天、消息 reducer、渲染、技能和 mention 选择器；不得导入 `src/note/` 内部模块。assistant turn 是严格有序的 block 流，连续两个以上 thinking/tool 过程项组成 `process_group`，只有正式 text 会切断过程段；工具状态用稳定 `callId` 更新，不能用“最近一个工具”推断。完整 block 状态与输出显示模式解耦：默认 `compact` 只投影正文、中性状态、错误和流式光标，`detailed` 投影可展开过程段并以流光表示运行项，运行时事件切换只重投影现有状态。AI 与用户气泡使用共享安全 GFM + KaTeX renderer；流式过程中未闭合的公式保留为普通文本。取消 turn 会结束 streaming、保留已有部分内容并追加“已中断”状态，不得复用错误块。写权限审批保留在 dock 卡片并复用同一只读 renderer。长输入通过 `input/overlay.ts` 移动同一个紧凑 Milkdown 宿主；普通态 Enter 发送，展开态 Enter 执行结构化换行。文件和 Skill 是 `assistant_ref` 原子节点，自定义 MIME 可恢复节点、纯文本可读；提交时 serializer 输出 `userText`，引用按文档顺序进入原 wire schema，失败或并发新编辑不会丢草稿。无配置的空对话在真实消息区显示设置入口；已配置空对话显示可折叠的三条 starter，它们只填充 composer，文件 starter 在一个 ProseMirror transaction 中插入引用节点与模板后缀。
+- `src/assistant/` 管理流式聊天、消息 reducer、渲染、技能和 mention 选择器；不得导入 `src/note/` 内部模块。assistant turn 是严格有序的 block 流，连续两个以上 thinking/tool 过程项组成 `process_group`，只有正式 text 会切断过程段；工具状态用稳定 `callId` 更新，不能用“最近一个工具”推断。完整 block 状态与输出显示模式解耦：默认 `compact` 只投影正文、中性状态、错误和流式光标，`detailed` 投影可展开过程段并以流光表示运行项，运行时事件切换只重投影现有状态。AI 与用户气泡使用共享安全 GFM + KaTeX renderer；流式过程中未闭合的公式保留为普通文本。取消 turn 会结束 streaming、保留已有部分内容并追加“已中断”状态，不得复用错误块。写权限审批保留在 dock 卡片并复用同一只读 renderer。长输入通过 `input/overlay.ts` 移动同一个紧凑 Milkdown 宿主；普通态 Enter 发送，展开态 Enter 执行结构化换行。文件和 Skill 是 `assistant_ref` 原子节点，自定义 MIME 可恢复节点、纯文本可读；提交时 serializer 输出 `userText`，引用按文档顺序进入原 wire schema，失败或并发新编辑不会丢草稿。助手通过 `get_ai_readiness` 读取后端就绪状态，未配置、未启用、配置不完整或运行时不可用时，在真实消息区显示可关闭的配置卡并保留历史；发送与重试前重新检查，不可用时恢复提示并保留草稿，不创建空会话，配置恢复后不自动发送。新对话先进入本地草稿状态。已就绪空对话显示可折叠的三条 starter，它们只填充 composer，文件 starter 在一个 ProseMirror transaction 中插入引用节点与模板后缀。
 - `src/history/`、`src/popup/`、`src/settings/` 分别是历史、选中文本弹窗和设置窗口的 UI。划词弹窗由 `state.ts` 的显式状态机在操作条、翻译结果和提问输入间切换；每次异步结果同时校验 `generationId` 与 `popupRequestId`。Assistant 暴露 `startConversationWithPrompt`，由 note controller 为划词提问强制创建独立会话；首条 callout 在当前气泡与历史恢复时都投影为问题和可展开引用卡。
 
 设置窗口由 `src/settings/main.ts` 装配，`shell.ts` 管理原生标题栏下的侧栏与分类
 切换，`general.ts` 管理主题与开机启动，`skills.ts` 管理目录清单、启停与导入，
 `shortcuts.ts` 管理录制器、渐进披露和冲突反馈。模块通过 `Config` 与显式保存
 回调协作，不跨模块查询 DOM。AI 提供商由 `provider-settings.ts` 管理五个固定档案，`output-mode.ts` 负责助手简洁/详细显示设置并在保存失败时恢复旧选择。
-`onboarding-lab.ts` 管理通用页的重播入口和仅 debug 可见的场景预览；设置 shell 在挂载前缓存 `settings://navigate`，因此助手配置入口可稳定深链到 AI 分类。
+`onboarding-lab.ts` 管理通用页的重播入口和仅 debug 可见的场景预览；`open_ai_settings` 在后端保留 AI 导航目标，`navigation.ts` 注册 `settings://navigate` 监听后通过 `take_settings_navigation` 消费目标，首次加载和已打开窗口均可深链到 AI 分类。
 Skill 候选和设置列表显示目录清单中的 `displayName` 与 `displayDescription`，
 但候选引用、启停开关和发送协议始终使用稳定英文 `name`；外部 Skill 未提供
 FloatNote 展示元数据时，host 已将显示字段回退到标准 `name` 与 `description`。

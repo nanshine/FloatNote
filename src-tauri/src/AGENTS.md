@@ -43,7 +43,10 @@ entry that calls `floatnote::run()`.
 AI settings are one fixed `AiSettings` aggregate in `config.rs`: five provider
 profiles plus an optional active ID. Provider save/activation belongs in
 `commands/settings.rs`; constructing and swapping the Rust runtime model must
-succeed before persistence.
+succeed before persistence. `get_ai_readiness` checks both profiles and runtime;
+`retry_ai_configuration` rebuilds the active model. History reads work without
+a model. `windows::SettingsNavigation` retains AI settings navigation until
+the frontend consumes it after subscribing.
 
 `Config.assistant_output_mode` is `compact` or `detailed`, defaults/falls back to
 `compact`, and changes through `set_assistant_output_mode`. Emit

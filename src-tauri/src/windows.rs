@@ -1,3 +1,14 @@
+use std::sync::Mutex;
+
+/// Retain a navigation request until the settings webview consumes it.
+#[derive(Default)]
+pub struct SettingsNavigation(pub Mutex<Option<String>>);
+
+#[tauri::command]
+pub fn take_settings_navigation(state: tauri::State<SettingsNavigation>) -> Option<String> {
+    state.0.lock().unwrap().take()
+}
+
 use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 
 pub fn note_window(app: &AppHandle) -> Option<WebviewWindow> {

@@ -11,6 +11,9 @@ import type { ChatConversation } from "../../../src/platform/chat-history";
 const root = document.querySelector<HTMLElement>("#assistant-region");
 if (!root) throw new Error("assistant fixture root is missing");
 
+const params = new URLSearchParams(location.search);
+const setup = params.get("setup");
+if (params.get("theme")) document.documentElement.dataset.theme = params.get("theme")!;
 const now = Date.now();
 const conversation: ChatConversation = {
   id: "browser-review",
@@ -26,6 +29,10 @@ const conversation: ChatConversation = {
 };
 
 const assistant = mountAssistant(root, {
+  getReadiness: async () => ({ status: setup === "disabled" ? "disabled" : setup ? "unconfigured" : "ready" }),
+  openSettings: async () => { document.body.dataset.settingsTarget = "ai"; },
+  rewind: async () => {},
+  rollbackConversation: async () => {},
   send: async () => "browser-review-request",
   createConversation: async () => conversation,
   openConversation: async (value) => value,
@@ -60,4 +67,5 @@ const permissionDialog = createPermissionDialog({ onResolve: () => {}, onClose: 
   permissionDialog.open(permissionRequest, projectPermission(permissionRequest));
 };
 
+if (setup) assistant.setInputOpen(true);
 document.body.dataset.reviewReady = "true";

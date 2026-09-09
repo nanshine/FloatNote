@@ -1,3 +1,4 @@
+import { getAiReadiness, retryAiConfiguration, openAiSettings } from "../platform/ai-readiness";
 import { invoke } from "@tauri-apps/api/core";
 import { emit, emitTo, listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -136,10 +137,9 @@ export function createAssistantController(deps: AssistantControllerDeps): Assist
     listSkills: agentListSkills,
     getOutputMode: getAssistantOutputMode,
     subscribeOutputMode: onAssistantOutputModeChanged,
-    isConfigured: async () => {
-      const config = await invoke<{ ai_settings?: { activeProviderId?: string | null; active_provider_id?: string | null } }>("get_config");
-      return Boolean(config.ai_settings?.activeProviderId ?? config.ai_settings?.active_provider_id);
-    },
+    getReadiness: getAiReadiness,
+    retryConfiguration: retryAiConfiguration,
+    openSettings: openAiSettings,
     listFiles: async (scope) => {
       if (scope.scopeType === "project") {
         const notes = await listNotes(scope.scopePath);
@@ -188,17 +188,11 @@ export function createAssistantController(deps: AssistantControllerDeps): Assist
     navigationToken += 1;
     handle.setScope(currentScope());
   });
-  void listen<boolean>("agent://configuration-changed", (event) => {
-    handle.setConfigured(event.payload);
-    if (event.payload) void handle.refreshConversation();
-  });
-  void onOnboardingPreviewChanged(async (scene) => {
-    if (scene === "assistant-configured-empty") handle.setConfigured(true);
-    else if (scene === "assistant-unconfigured") handle.setConfigured(false);
-    else {
-      const config = await invoke<{ ai_settings?: { activeProviderId?: string | null } }>("get_config");
-      handle.setConfigured(Boolean(config.ai_settings?.activeProviderId));
-    }
+  void listen("agent://configuration-changed", () => { void handle.refreshReadiness(); });
+  void onOnboardingPreviewChanged((scene) => {
+    if (scene === "assistant-configured-empty") handle.setReadinessPreview({ status: "ready" });
+    else if (scene === "assistant-unconfigured") handle.setReadinessPreview({ status: "unconfigured" });
+    else handle.setReadinessPreview(null);
   });
 
   void listen<PopupQuestionRequest>("popup-question-request", async (event) => {

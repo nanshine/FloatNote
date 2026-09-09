@@ -57,6 +57,10 @@ into a reconciled message list with incremental DOM updates.
   reference nodes in document order; hidden reference tokens exist only at the
   compatibility clipboard/payload boundary. `input/composer.ts` and its CM
   extensions are legacy test/compatibility modules and are not production-mounted.
+- AI readiness comes from `src/platform/ai-readiness.ts`; setup can be dismissed,
+  but submission rechecks the real backend state and restores the card without
+  clearing drafts. Preview overrides never authorize sending. New conversation
+  creates a local draft; persistent sessions are created on first valid send.
 - Empty conversations render their setup/suggestion card inside the real message
   scrollport. Starter actions may fill the composer or open its file/Skill picker,
   but never send automatically or replace a non-empty draft.
