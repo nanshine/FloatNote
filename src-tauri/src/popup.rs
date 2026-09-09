@@ -350,6 +350,12 @@ fn run_popup_capture_with_origin(
         return; // a capture is already in flight
     };
 
+    #[cfg(target_os = "macos")]
+    if selection_event.is_some()
+        && !macos_accessibility_client::accessibility::application_is_trusted()
+    {
+        return;
+    }
     if !crate::capture::check_accessibility(app) {
         return;
     }

@@ -52,3 +52,5 @@ Cmd/Ctrl 加减号与 0 的编辑器字号调整，并通过共享 `--editor-fon
 `shared/note-logic/` 是前端纯逻辑 workspace package，包含 Inbox v2
 codec、文本区间变换、Markdown 语义上下文、精确文本匹配和标签调色板等纯逻辑；
 它不依赖 DOM、Node I/O 或 Tauri API；Rust Agent 以独立端口和 parity 测试消费相同磁盘格式。
+
+`src/shared/capture-permission.ts` 为主窗口提供持续的划线权限入口；主窗口仅在未授权或监听失败时显示轻量状态，主动采集失败展开可操作说明，收起后不自动展开。新手引导与该入口共用打开系统设置命令。窗口获得焦点以及有焦点时每三秒刷新权限并恢复监听；正常写作时不发起系统授权提示。权限恢复提示用户重新划选，`src/settings/capture-permission.ts` 在快捷键页的选中文字弹窗卡片内展示权限状态，未授权时提供前往开启，监听失败或检测失败时提供重试；已授权时不显示操作按钮，Windows 隐藏该行。触发方式变更后立即刷新，权限状态独立于功能开关。

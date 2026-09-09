@@ -202,6 +202,7 @@ pub fn run() {
             commands::set_onboarding_preview,
             commands::get_capture_permission_state,
             commands::request_capture_permission,
+            commands::refresh_capture_availability,
             commands::list_notes,
             commands::save_pasted_image,
             commands::import_image_files,

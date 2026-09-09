@@ -123,12 +123,56 @@ pub fn get_capture_permission_state() -> CapturePermissionState {
 }
 
 #[tauri::command]
-pub fn request_capture_permission() -> CapturePermissionState {
+pub async fn request_capture_permission() -> Result<CapturePermissionState, String> {
     #[cfg(target_os = "macos")]
-    if !macos_accessibility_client::accessibility::application_is_trusted() {
-        macos_accessibility_client::accessibility::application_is_trusted_with_prompt();
+    {
+        if !macos_accessibility_client::accessibility::application_is_trusted() {
+            macos_accessibility_client::accessibility::application_is_trusted_with_prompt();
+        }
+        let status = std::process::Command::new("/usr/bin/open")
+            .arg("x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")
+            .status()
+            .map_err(|error| error.to_string())?;
+        if !status.success() {
+            return Err("请手动打开系统设置 → 隐私与安全性 → 辅助功能，开启 FloatNote".into());
+        }
     }
-    capture_permission_state()
+    Ok(capture_permission_state())
+}
+
+#[derive(Serialize)]
+pub struct CaptureAvailability {
+    permission: CapturePermissionState,
+    monitor: &'static str,
+}
+
+#[tauri::command]
+pub async fn refresh_capture_availability(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> Result<CaptureAvailability, String> {
+    // Serialize with mode changes across windows, without holding the config lock during joins.
+    let _transaction = state.ai_settings_tx.lock().await;
+    let permission = capture_permission_state();
+    let enabled =
+        super::should_install_selection_monitor(&state.config.lock().unwrap().auto_popup_mode);
+    if permission == CapturePermissionState::Required || !enabled {
+        crate::selection_monitor::uninstall();
+    } else {
+        crate::selection_monitor::install(app);
+    }
+    Ok(CaptureAvailability {
+        permission,
+        monitor: if !enabled {
+            "off"
+        } else if permission == CapturePermissionState::Required {
+            "blocked"
+        } else if crate::selection_monitor::is_running() {
+            "running"
+        } else {
+            "failed"
+        },
+    })
 }
 
 #[cfg(test)]

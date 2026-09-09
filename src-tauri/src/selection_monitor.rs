@@ -436,7 +436,7 @@ pub fn install(app: AppHandle) {
     {
         use tauri::Emitter;
         let mut slot = MONITOR.lock().expect("MONITOR mutex poisoned");
-        if slot.is_some() || !crate::capture::check_accessibility(&app) {
+        if slot.is_some() || !macos_accessibility_client::accessibility::application_is_trusted() {
             return;
         }
         let (sender, receiver) = mpsc::sync_channel::<GlobalEvent>(128);
@@ -497,7 +497,7 @@ pub fn install(app: AppHandle) {
             _ => {
                 let _ = event_thread.join();
                 let _ = worker_thread.join();
-                let _ = app.emit_to("main", "accessibility-needed", ());
+                let _ = app.emit_to("main", "selection-monitor-failed", ());
             }
         }
     }
@@ -669,5 +669,17 @@ mod tests {
             y: 100,
         };
         assert!(!has_selection_intent(down, second, Some(first), false));
+    }
+}
+
+/// Runtime health is independent from Accessibility trust.
+pub fn is_running() -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        MONITOR.lock().expect("MONITOR mutex poisoned").is_some()
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        true
     }
 }

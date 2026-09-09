@@ -84,17 +84,17 @@ pub fn run_capture(app: &AppHandle) {
 }
 
 /// macOS Accessibility trust check. Returns true if capture may proceed.
-/// On macOS, if untrusted, prompts once and emits `accessibility-needed` to
+/// On macOS, if untrusted, shows actionable guidance and emits `accessibility-needed` to
 /// the `main` window; returns false. Windows uses the clipboard path below and
 /// needs no separate accessibility permission.
 pub fn check_accessibility(app: &AppHandle) -> bool {
     #[cfg(target_os = "macos")]
     {
-        static PROMPTED: AtomicBool = AtomicBool::new(false);
         if !macos_accessibility_client::accessibility::application_is_trusted() {
             log_line("accessibility NOT trusted — cannot simulate Cmd+C");
-            if !PROMPTED.swap(true, Ordering::SeqCst) {
-                macos_accessibility_client::accessibility::application_is_trusted_with_prompt();
+            if let Some(window) = crate::windows::note_window(app) {
+                let _ = window.show();
+                let _ = window.set_focus();
             }
             let _ = app.emit_to("main", "accessibility-needed", ());
             return false;

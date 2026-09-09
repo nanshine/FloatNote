@@ -175,7 +175,7 @@ export function createOnboardingController(deps: OnboardingDeps): OnboardingCont
       ? `<h2>采集到第一条材料</h2><p>采集你产生共鸣的任何内容，就这样放着，整理的工作以后来办。</p>`
       : `<h2>收集一段有用的文字</h2><p>在浏览器或 PDF 中划选文字。<br>点击旁边的「采集」，存入当前项目。</p><p class="onboarding-shortcut">也可以按 <kbd>${escapeHtml(deps.captureShortcut())}</kbd> 快速采集。</p>${needsPermission ? `<p class="onboarding-permission">先开启辅助功能权限，让 FloatNote 读取选中文字并显示采集按钮。</p>` : ""}`;
     decorate(card, "capture");
-    if (needsPermission && !succeeded) card.append(button("开启辅助功能权限", "fn-btn fn-btn--secondary", () => void requestCapturePermission().then((value) => { permission = value; void render(); })));
+    if (needsPermission && !succeeded) card.append(button("打开系统设置", "fn-btn fn-btn--secondary", () => void requestCapturePermission().then((value) => { permission = value; void render(); }).catch(showError)));
     card.append(navigation("capture", succeeded ? "下一步" : "跳过这一步", () => void enterWriting()));
     const error = document.createElement("p");
     error.className = "onboarding-error";

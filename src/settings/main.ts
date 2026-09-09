@@ -14,6 +14,7 @@ import { getRuntimeProfile } from "../platform/onboarding";
 import { mountOnboardingSettings } from "./onboarding-lab";
 
 const app = document.querySelector<HTMLElement>("#app")!;
+let disconnectPermission: (() => void) | null = null;
 let disconnectNavigation: (() => void) | null = null;
 
 async function render(): Promise<void> {
@@ -23,6 +24,7 @@ async function render(): Promise<void> {
     config.disabled_skills ??= [];
     config.ai_settings ??= createEmptyAiSettings();
     config.assistant_output_mode = config.assistant_output_mode === "detailed" ? "detailed" : "compact";
+    disconnectPermission?.();
     app.innerHTML = settingsShellMarkup();
     disconnectNavigation?.();
     disconnectNavigation = await connectSettingsNavigation(mountTabs(app));
@@ -43,7 +45,7 @@ async function render(): Promise<void> {
       config,
       save,
     );
-    mountShortcutSettings(app.querySelector<HTMLElement>("#shortcut-settings")!, config);
+    disconnectPermission = mountShortcutSettings(app.querySelector<HTMLElement>("#shortcut-settings")!, config);
   } catch (reason) {
     app.innerHTML = `<main class="settings-load-error" role="alert"><strong>无法载入设置</strong><p>${String(reason)}</p><button type="button" id="retry-settings">重试</button></main>`;
     app.querySelector<HTMLButtonElement>("#retry-settings")!.onclick = () => void render();
