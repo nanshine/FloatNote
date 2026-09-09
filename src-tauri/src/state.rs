@@ -5,6 +5,7 @@
 
 use crate::agent::{ActiveNote, AgentService, MutationStore};
 use crate::config::Config;
+use crate::paths::RuntimeProfile;
 use crate::popup::PopupCache;
 use crate::watcher::{FileWatcher, SuppressList};
 use std::collections::HashMap;
@@ -57,6 +58,8 @@ pub struct AppState {
     /// Serializes provider runtime → disk → memory transactions.
     pub ai_settings_tx: tokio::sync::Mutex<()>,
     pub config_path: PathBuf,
+    pub runtime_profile: RuntimeProfile,
+    pub onboarding_preview: Mutex<Option<String>>,
     /// In-process Rust agent runtime.
     pub agent: Arc<AgentService>,
     /// agent_send 记录的当前活动笔记，供 apply_write 定位文件。

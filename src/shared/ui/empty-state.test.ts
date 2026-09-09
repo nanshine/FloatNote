@@ -4,14 +4,14 @@ import { emptyStateMarkup } from "./empty-state";
 describe("emptyStateMarkup", () => {
   it("renders title, hint, and both buttons", () => {
     const html = emptyStateMarkup({
-      icon: "✍️",
+      icon: "pen-nib",
       title: "欢迎来到 FloatNote",
       hint: "还没有项目空间。",
       primary: { label: "新建项目", action: () => {} },
       secondary: { label: "新建文档", action: () => {} },
     });
     expect(html).toContain('class="fn-empty__icon"');
-    expect(html).toContain(">✍️<");
+    expect(html).toContain("ph-pen-nib");
     expect(html).toContain('class="fn-empty__title"');
     expect(html).toContain("欢迎来到 FloatNote");
     expect(html).toContain('class="fn-empty__hint"');

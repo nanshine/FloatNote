@@ -45,6 +45,23 @@ async function mountWithDeps(overrides: Partial<AssistantDeps> = {}) {
 describe("assistant message actions", () => {
   afterEach(() => document.body.replaceChildren());
 
+  it("shows provider setup in an unconfigured empty conversation", async () => {
+    const { root } = await mountWithDeps({ isConfigured: async () => false });
+    await vi.waitFor(() => expect(root.querySelector(".assistant-empty")?.textContent).toContain("配置 AI 服务提供商"));
+    expect(root.querySelector(".assistant-scroll")?.contains(root.querySelector(".assistant-empty"))).toBe(true);
+  });
+
+  it("fills but does not send a Socratic starter in a configured empty conversation", async () => {
+    const send = vi.fn().mockResolvedValue("r2");
+    const { root } = await mountWithDeps({ isConfigured: async () => true, send });
+    await vi.waitFor(() => expect(root.querySelector(".assistant-starters")?.textContent).toContain("用追问帮我想清楚"));
+    [...root.querySelectorAll<HTMLButtonElement>(".assistant-starters button")]
+      .find((button) => button.textContent === "用追问帮我想清楚")!.click();
+    await vi.waitFor(() => expect(root.querySelector(".fn-assistant-structured-editor")?.textContent).toContain("请先不要给结论"));
+    expect(send).not.toHaveBeenCalled();
+    await vi.waitFor(() => expect(root.querySelector(".assistant-empty")).toBeNull());
+  });
+
   it("starts a fresh prompted conversation and exposes the accepted request id", async () => {
     const send = vi.fn().mockResolvedValue("selection-r1");
     const createConversation = vi.fn().mockResolvedValue({ ...conversation, id: "selection-c1" });

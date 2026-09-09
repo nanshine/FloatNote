@@ -24,6 +24,8 @@ load/save/interoperability boundary, while ProseMirror state is authoritative du
   visible Markdown.
 - `piece-switcher.ts`, `seg-switch.ts`, `split.ts`, `layout*.ts`,
   `topbar.ts` — layout/view switching.
+- `onboarding.ts` — persisted six-step onboarding, anchored coach marks,
+  capture permission guidance, preview overrides and split-window expansion.
 - `image-fs.ts` and `image-attrs.ts` retain the filesystem protocol and Markdown
   attribute codec; structured image node views own caption/width/alignment UI.
 - `recent-projects.ts` — MRU list helpers.

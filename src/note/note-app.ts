@@ -92,6 +92,7 @@ import {
 import { createStructuredInbox } from "./structured-inbox";
 import { imageSrc } from "./image-fs";
 import { attachStructuredMedia } from "./structured-media";
+import { createOnboardingController, type OnboardingController } from "./onboarding";
 
 
 export async function startNoteApp() {
@@ -133,6 +134,7 @@ const DEFAULT_PIECE_TITLE = "未命名作品";
 const DEFAULT_DOCUMENT_TITLE = "未命名文档";
 
 const session = createNoteSession();
+let onboardingController: OnboardingController | null = null;
 
 /** 当前工作目录（隐式）：bootstrap 时从 config.working_dir 读取；项目新建时由后端
  * 自动回写，前端在此镜像。无工作目录时为空串——NO_PROJECT 空态的"新建项目"会弹
@@ -162,12 +164,12 @@ function renderWindowState(state: WindowState) {
       app.classList.add("state-no-project");
       setProjectLabel("");
       cleanupBodyEmpty = renderEmptyState(bodyEmptyRoot, {
-        icon: "✍️",
-        title: "欢迎来到 FloatNote",
-        hint: "还没有项目空间。新建一个项目开始写作，打开已有文件夹，或直接新建一篇独立文档。",
-        primary: { label: "新建项目", action: () => void createDefaultProject() },
-        secondary: { label: "新建文档", action: () => void createStandaloneDocument() },
-        tertiary: { label: "打开现有项目", action: () => void openExistingProjectFlow() },
+        icon: "pen-nib",
+        title: "把读到的变成学会的",
+        hint: "收集材料，写下观点，让 AI 陪你深入思考。",
+        primary: { label: "创建第一个项目", action: () => void createDefaultProject() },
+        secondary: { label: "打开已有项目", action: () => void openExistingProjectFlow() },
+        tertiary: { label: "只新建一篇文档", action: () => void createStandaloneDocument() },
       });
       break;
     case "PATH_ERROR":
@@ -175,7 +177,7 @@ function renderWindowState(state: WindowState) {
       app.classList.add("state-path-error");
       setProjectLabel("");
       cleanupBodyEmpty = renderEmptyState(bodyEmptyRoot, {
-        icon: "⚠️",
+        icon: "warning-circle",
         title: "读取失败",
         hint: state.error ?? "无法读取项目列表，请稍后重试。",
         primary: { label: "重试", action: () => void retryBootstrap() },
@@ -186,9 +188,8 @@ function renderWindowState(state: WindowState) {
       // 空态下无当前作品：清掉残留引用与面包屑/标题，避免上一个项目的作品名泄漏到新空态。
       session.currentPiece = null;
       pieceHeader?.setLabel("");
-      session.surface = "piece";
       cleanupPieceEmpty = renderEmptyState(pieceEmptyRoot, {
-        icon: "📝",
+        icon: "file-text",
         title: "这里还没有作品",
         hint: `在「${state.project.name}」里新建一篇开始写作。`,
         primary: { label: "新建作品", action: () => void createFirstPiece() },
@@ -225,6 +226,7 @@ const structuredInbox = await createStructuredInbox({
   parent: editorRoot,
   projectionRoot: annotationProjectionRoot,
   onFocus: publishInboxActive,
+  onCaptureCompleted: () => onboardingController?.captured(),
   onSave: (snapshot) => {
     if (!applyingRemote && session.currentInbox) scheduleSave(session.currentInbox.entry.path, snapshot);
   },
@@ -467,6 +469,7 @@ async function openDocument(doc: NoteEntry) {
   assistantHandle.setScope(assistantController.currentScope());
   // 独立文档不在项目目录内，停掉文件监听以免误刷新（返回项目时再 watch_dir）。
   void invoke("unwatch_dir");
+  onboardingController?.documentOpened();
 }
 
 /** 列举项目内的 piece；失败时返回空数组并把错误上抛由调用方决定回退。 */
@@ -514,6 +517,7 @@ function selectView(view: "inbox" | "piece" | "split") {
   }
   applyView();
   tasksPanel.syncLayout();
+  onboardingController?.userSelectedView(view);
 }
 
 const tasksPanel = createTasksPanel(noteBody, {
@@ -522,6 +526,7 @@ const tasksPanel = createTasksPanel(noteBody, {
   onOpenChange: (open) => {
     setTasksToggle(open);
     layoutController?.setActionOpen(open);
+    onboardingController?.tasksChanged();
   },
 });
 
@@ -573,6 +578,8 @@ const assistantHandle = assistantController.handle;
 
 async function toggleAssistantFromChrome() {
   await assistantController.toggleFromChrome();
+  const current = await invoke<{ open: boolean }>("get_assistant_state");
+  if (current.open) onboardingController?.assistantOpened();
 }
 
 async function handleAgentNoteUpdated(payload: NoteUpdated) {
@@ -850,6 +857,8 @@ async function openProject(project: ProjectEntry) {
   const state = resolveOpenProject({ project, pieces });
   if (state.kind === "LOADED") {
     await openPiece(state.piece);
+  } else {
+    session.surface = "inbox";
   }
   renderWindowState(state);
   tasksPanel.reload();
@@ -868,6 +877,7 @@ async function openProject(project: ProjectEntry) {
   assistantHandle.setScope(assistantController.currentScope());
   // 切换文件监听到新项目目录。
   void invoke("watch_dir", { dir: project.path });
+  onboardingController?.projectOpened();
 }
 
 /** 启动时打开项目：优先 MRU 列表里仍存在的第一个；MRU 为空时扫描工作目录下的
@@ -1374,6 +1384,26 @@ async function init() {
   layoutController = createLayoutController(app, { assistantOpen: assistant.open });
   layoutController.apply();
   applyView();
+
+  onboardingController = createOnboardingController({
+    app,
+    hasProject: () => session.mode === "project" && session.currentProject !== null,
+    createPiece: async () => {
+      if (!session.currentPiece) await createFirstPiece();
+    },
+    selectView,
+    focusPieceTitle,
+    hasDocument: () => session.mode === "document",
+    setTasksOpen: (open) => tasksPanel.setOpen(open),
+    tasksOpen: () => tasksPanel.isOpen(),
+    openAssistant: async () => {
+      const current = await invoke<{ open: boolean }>("get_assistant_state");
+      if (!current.open) await toggleAssistantFromChrome();
+      onboardingController?.assistantOpened();
+    },
+    captureShortcut: () => config.shortcut_capture,
+  });
+  await onboardingController.start();
 
   // ── 窗内快捷键 ──
   let uninstallShortcuts: (() => void) | null = null;

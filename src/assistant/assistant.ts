@@ -55,6 +55,7 @@ export interface AssistantDeps {
   listFiles: (scope: ChatScope) => Promise<MentionFile[]>;
   getOutputMode?: () => Promise<AssistantOutputMode>;
   subscribeOutputMode?: (callback: (mode: AssistantOutputMode) => void) => UnlistenFn | Promise<UnlistenFn>;
+  isConfigured?: () => Promise<boolean>;
 }
 
 export interface AssistantHandle {
@@ -95,11 +96,15 @@ export interface AssistantHandle {
   isMentionMenuOpen: () => boolean;
   /** 关闭 `@` 文件提及下拉（Esc 链中置于 skill 菜单之后、历史浮层之前）。 */
   closeMentionMenu: () => void;
+  setConfigured: (configured: boolean) => void;
 }
 
 export function mountAssistant(root: HTMLElement, deps: AssistantDeps): AssistantHandle {
   let state: ChatState = emptyChat();
   let outputMode: AssistantOutputMode = "compact";
+  let configured = false;
+  let suggestionsExpanded = true;
+  let composerEmpty = true;
 
   root.classList.add("assistant");
   const newConversationButton = createButton({
@@ -176,12 +181,63 @@ export function mountAssistant(root: HTMLElement, deps: AssistantDeps): Assistan
   function rerender() {
     // 定向增量更新：已完成消息/块节点复用，不重放进场动画 → 消灭闪烁。
     reconcileMessages(scroll, state.messages, msgMap, outputMode, followingBottom);
+    scroll.querySelector(".assistant-empty")?.remove();
+    const hasMessages = state.messages.length > 0;
+    if (!hasMessages && composerEmpty) scroll.append(renderEmptyAssistant());
     // 无消息时不渲染聊天历史容器，避免 floating 态出现空的卡片/气泡（inline 态无副作用）。
     root.classList.toggle("has-messages", scroll.childElementCount > 0);
     for (const action of scroll.querySelectorAll<HTMLButtonElement>(".chat-retry-btn, .chat-edit-btn")) {
       action.disabled = isChatStreaming(state);
     }
     updateSendMode();
+  }
+
+  function renderEmptyAssistant(): HTMLElement {
+    const empty = document.createElement("section");
+    empty.className = "assistant-empty";
+    if (!configured) {
+      empty.innerHTML = `<i class="ph ph-sparkle" aria-hidden="true"></i><h2>苏格拉底 AI</h2><p>它可以读取采集区和作品，帮你追问、整理、规划或共同写作。</p>`;
+      const configure = document.createElement("button");
+      configure.type = "button";
+      configure.className = "fn-btn fn-btn--primary";
+      configure.textContent = "配置 AI 服务提供商";
+      configure.onclick = () => void invoke("open_ai_settings");
+      empty.append(configure);
+      return empty;
+    }
+    const heading = document.createElement("button");
+    heading.type = "button";
+    heading.className = "assistant-starters-toggle";
+    heading.textContent = suggestionsExpanded ? "试试这样开始" : "查看提问建议";
+    heading.setAttribute("aria-expanded", String(suggestionsExpanded));
+    heading.onclick = () => { suggestionsExpanded = !suggestionsExpanded; rerender(); };
+    empty.append(heading);
+    if (!suggestionsExpanded) return empty;
+    const starters = document.createElement("div");
+    starters.className = "assistant-starters";
+    const add = (label: string, action: () => void) => {
+      const item = document.createElement("button");
+      item.type = "button";
+      item.textContent = label;
+      item.onclick = action;
+      starters.append(item);
+    };
+    add("结合项目资料梳理观点", () => composer.openFileStarter());
+    add("使用一个 AI 技能", () => composer.openSkillPicker());
+    add("用追问帮我想清楚", () => composer.fillStarter("请先不要给结论，通过追问帮我想清楚这个问题："));
+    const collapse = buttonForCollapse();
+    starters.append(collapse);
+    empty.append(starters);
+    return empty;
+  }
+
+  function buttonForCollapse(): HTMLButtonElement {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "assistant-starters-collapse";
+    button.textContent = "收起建议";
+    button.onclick = () => { suggestionsExpanded = false; rerender(); };
+    return button;
   }
 
   function dispatch(event: ChatEvent) {
@@ -195,6 +251,7 @@ export function mountAssistant(root: HTMLElement, deps: AssistantDeps): Assistan
     root.dataset.conversationId = conversation?.id ?? "";
     if (!conversation) return;
     if (clearMessages) resumeBottomFollowing();
+    if (clearMessages) suggestionsExpanded = true;
     state = clearMessages
       ? { activeConversationId: conversation.id, messages: [] }
       : { ...state, activeConversationId: conversation.id };
@@ -469,12 +526,14 @@ export function mountAssistant(root: HTMLElement, deps: AssistantDeps): Assistan
     listSkills: deps.listSkills,
     onSubmit: submit,
     onEmptySend: () => { void toggleHistoryPopover(); },
-    onChange: () => {
+    onChange: (empty) => {
+      composerEmpty = empty;
       updateSendMode();
       updateExpandState();
       // CM6 的高度可能在 update listener 之后才由浏览器完成布局；下一帧复测，
       // 确保刚达到上限时放大按钮立即出现。
       requestAnimationFrame(updateExpandState);
+      queueMicrotask(rerender);
     },
     onLargeChange: () => {
       updateSendMode();
@@ -505,6 +564,7 @@ export function mountAssistant(root: HTMLElement, deps: AssistantDeps): Assistan
   document.addEventListener("pointerdown", onDocumentPointerDown);
 
   rerender();
+  void deps.isConfigured?.().then((value) => { configured = value; rerender(); }).catch(() => {});
   updateSendMode();
   updateExpandState();
 
@@ -672,6 +732,7 @@ export function mountAssistant(root: HTMLElement, deps: AssistantDeps): Assistan
       closeHistoryPopover();
       resumeBottomFollowing();
       state = emptyChat();
+      suggestionsExpanded = true;
       rerender();
       const token = ++scopeToken;
       if (!scope) return;
@@ -743,6 +804,10 @@ export function mountAssistant(root: HTMLElement, deps: AssistantDeps): Assistan
     },
     closeMentionMenu() {
       composer.closePopover();
+    },
+    setConfigured(value) {
+      configured = value;
+      rerender();
     },
   };
 }

@@ -43,7 +43,7 @@ npm run release:check -- --tag v0.2.0
 
 ## 浏览器 UI 回归
 
-`npm run review:ui` 自动启动或复用 Vite，再由 WebdriverIO browser mode 驱动托管的 Chrome。`tests/review/browser/assistant-fixture.ts` 直接挂载生产 `mountAssistant` 和生产 CSS；`note-surfaces-fixture.ts` 直接创建生产 Inbox/Piece 编辑器，验证空白底部点击、焦点 chrome、字体/间距、`---` 分隔线一致性与长文档滚动。fixture 不复制组件实现，也不需要 Tauri binary 或 `.app`。
+`npm run review:ui` 自动启动或复用 Vite，再由 WebdriverIO browser mode 驱动托管的 Chrome。`tests/review/browser/assistant-fixture.ts` 直接挂载生产 `mountAssistant` 和生产 CSS；`note-surfaces-fixture.ts` 直接创建生产 Inbox/Piece 编辑器；`onboarding-fixture.ts` 挂载生产引导控制器、通过 Tauri mock IPC 提供状态与权限，并复用生产 CSS，在 380×520、840×520、浅色和深色组合下检查内容卡及各锚定卡不会越出视口。fixture 不需要 Tauri binary 或 `.app`，失败截图统一写入 artifacts。
 
 - spec 位于 `tests/review/browser/`，配置见 `wdio.browser.conf.ts`；失败截图写入 `artifacts/browser-review/`。
 - 适合验证 DOM、计算样式、焦点、动画前后状态和前端 IPC 参数；不用于证明 Rust、真实 webview 或系统窗口行为。

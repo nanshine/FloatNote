@@ -20,6 +20,62 @@ pub enum Theme {
     Dark,
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum OnboardingStatus {
+    #[default]
+    NotStarted,
+    InProgress,
+    Completed,
+    Dismissed,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum OnboardingStep {
+    #[default]
+    Welcome,
+    Capture,
+    Writing,
+    Tasks,
+    Split,
+    Assistant,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
+#[serde(default)]
+pub struct OnboardingState {
+    pub version: u8,
+    pub status: OnboardingStatus,
+    pub step: OnboardingStep,
+    pub capture_succeeded: bool,
+}
+
+impl Default for OnboardingState {
+    fn default() -> Self {
+        Self {
+            version: 1,
+            status: OnboardingStatus::NotStarted,
+            step: OnboardingStep::Welcome,
+            capture_succeeded: false,
+        }
+    }
+}
+
+impl OnboardingState {
+    pub fn migrated_existing_user() -> Self {
+        Self {
+            status: OnboardingStatus::Completed,
+            ..Self::default()
+        }
+    }
+
+    pub fn normalized(mut self) -> Self {
+        self.version = 1;
+        self
+    }
+}
+
 impl<'de> Deserialize<'de> for Theme {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
@@ -225,6 +281,8 @@ pub struct Config {
     pub launch_at_login: bool,
     /// Application appearance preference. System is the default and follows the OS scheme.
     pub theme: Theme,
+    /// Persisted independently so a stale settings window cannot overwrite progress.
+    pub onboarding: OnboardingState,
     /// 助手是否展开显示（折叠则隐藏）。助手始终活在笔记窗内，按窗宽自动 inline/floating。
     pub assistant_open: bool,
     /// Assistant process projection. Full session history is independent of this display setting.
@@ -253,6 +311,7 @@ impl Default for Config {
             window_shortcuts: WindowShortcuts::default(),
             launch_at_login: false,
             theme: Theme::System,
+            onboarding: OnboardingState::default(),
             assistant_open: false,
             assistant_output_mode: AssistantOutputMode::Compact,
             recent_projects: Vec::new(),
@@ -266,12 +325,25 @@ impl Default for Config {
 pub fn load(path: &Path) -> Config {
     match std::fs::read_to_string(path) {
         Ok(contents) => {
+            let has_onboarding = serde_json::from_str::<serde_json::Value>(&contents)
+                .ok()
+                .and_then(|value| {
+                    value
+                        .as_object()
+                        .map(|object| object.contains_key("onboarding"))
+                })
+                .unwrap_or(false);
             let mut config: Config = serde_json::from_str(&contents).unwrap_or_default();
+            config.onboarding = if has_onboarding {
+                config.onboarding.normalized()
+            } else {
+                OnboardingState::migrated_existing_user()
+            };
             let loaded = config.clone();
             config.auto_popup_mode = normalize_auto_popup_mode(&config.auto_popup_mode);
             migrate_windows_shortcuts(&mut config);
             config.ai_settings.normalize_loaded();
-            if config != loaded {
+            if config != loaded || !has_onboarding {
                 let _ = save(path, &config);
             }
             config
@@ -396,6 +468,26 @@ mod tests {
     fn empty_json_yields_defaults() {
         let config: Config = serde_json::from_str("{}").unwrap();
         assert_eq!(config, Config::default());
+    }
+
+    #[test]
+    fn missing_file_is_a_genuine_new_install() {
+        let dir = crate::testutil::tempdir();
+        let config = load(&dir.path().join("missing.json"));
+        assert_eq!(config.onboarding, OnboardingState::default());
+    }
+
+    #[test]
+    fn existing_config_without_onboarding_migrates_to_completed() {
+        let dir = crate::testutil::tempdir();
+        let path = dir.path().join("config.json");
+        std::fs::write(&path, r#"{"launch_at_login":true}"#).unwrap();
+        let config = load(&path);
+        assert_eq!(config.onboarding.status, OnboardingStatus::Completed);
+        assert!(config.launch_at_login);
+        assert!(std::fs::read_to_string(path)
+            .unwrap()
+            .contains("onboarding"));
     }
 
     #[test]

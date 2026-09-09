@@ -85,8 +85,23 @@ pub fn run() {
 
     builder
         .setup(|app| {
+            let app_config_dir = app
+                .path()
+                .app_config_dir()
+                .unwrap_or_else(|_| std::env::temp_dir().join("FloatNote"));
+            let runtime_profile = paths::initialize_runtime(app_config_dir).clone();
+            if let Some(workspace) = runtime_profile.workspace_dir.as_ref() {
+                std::fs::create_dir_all(workspace)?;
+            }
             let path = commands::config_path(app.handle());
-            let config = config::load(&path);
+            let config_missing = !path.exists();
+            let mut config = config::load(&path);
+            if runtime_profile.is_debug && config_missing {
+                if let Some(workspace) = runtime_profile.workspace_dir.as_ref() {
+                    config.working_dir = Some(workspace.to_string_lossy().into_owned());
+                    config::save(&path, &config)?;
+                }
+            }
             let write_suppress = watcher::new_suppress_list();
             let file_watcher =
                 match watcher::FileWatcher::new(app.handle().clone(), write_suppress.clone()) {
@@ -115,6 +130,8 @@ pub fn run() {
                 config: Mutex::new(config),
                 ai_settings_tx: tokio::sync::Mutex::new(()),
                 config_path: path,
+                runtime_profile,
+                onboarding_preview: Mutex::new(None),
                 agent: agent_service,
                 active_note: Mutex::new(None),
                 agent_seq: std::sync::atomic::AtomicU64::new(0),
@@ -177,6 +194,13 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::get_config,
             commands::set_config,
+            commands::get_onboarding_state,
+            commands::set_onboarding_state,
+            commands::get_runtime_profile,
+            commands::get_onboarding_preview,
+            commands::set_onboarding_preview,
+            commands::get_capture_permission_state,
+            commands::request_capture_permission,
             commands::list_notes,
             commands::save_pasted_image,
             commands::import_image_files,

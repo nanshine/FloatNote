@@ -217,6 +217,7 @@ export async function createStructuredInbox(options: {
   projectionRoot: HTMLElement;
   onSave: (snapshot: string) => void;
   onFocus?: () => void;
+  onCaptureCompleted?: () => void;
   resolveImageSrc?: (url: string) => string;
 }): Promise<StructuredInboxHandle> {
   let metadata: InboxMetadata = structuredClone(EMPTY_METADATA);
@@ -550,6 +551,7 @@ export async function createStructuredInbox(options: {
       ?? change.from + change.insert.length;
     editor.focus();
     refresh();
+    options.onCaptureCompleted?.();
   });
 
   loading = false;

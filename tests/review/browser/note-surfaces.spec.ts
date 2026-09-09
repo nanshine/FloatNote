@@ -80,16 +80,16 @@ describe("note editor surface browser review", () => {
     }));
     assert.deepEqual(placeholders, [
       {
-        lineHeight: "21px",
+        lineHeight: "24px",
         placeholder: "在这里写点什么…",
-        placeholderLineHeight: "21px",
+        placeholderLineHeight: "24px",
         placeholderTop: "0px",
         position: "relative",
       },
       {
-        lineHeight: "21px",
+        lineHeight: "24px",
         placeholder: "开始写…",
-        placeholderLineHeight: "21px",
+        placeholderLineHeight: "24px",
         placeholderTop: "0px",
         position: "relative",
       },

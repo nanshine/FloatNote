@@ -57,6 +57,9 @@ into a reconciled message list with incremental DOM updates.
   reference nodes in document order; hidden reference tokens exist only at the
   compatibility clipboard/payload boundary. `input/composer.ts` and its CM
   extensions are legacy test/compatibility modules and are not production-mounted.
+- Empty conversations render their setup/suggestion card inside the real message
+  scrollport. Starter actions may fill the composer or open its file/Skill picker,
+  but never send automatically or replace a non-empty draft.
 - `styles.css` — assistant card/bubble/diff/picker styling.
 
 Tool rows use the Rust Agent-provided safe `label`, semantic `category`, and stable

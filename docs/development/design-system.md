@@ -55,6 +55,8 @@ src/styles/primitives.css   src/styles/semantic.css   src/styles/components.css
 - **disabled**：`opacity: .4; cursor: default`。
 - **reduced-motion**：全局统一（此前仅 styles/assistant/popup 有）。
 
+引导使用无全屏遮罩的 360px 内容卡与 320px 锚定提示卡，窄窗自适应缩小，短标题和正文左对齐；欢迎页的创建项目按钮独占主操作行。每步只展示一张说明或结果卡：尚未尝试时提供操作和弱化的跳过，完成操作后提供下一步；写作仅需一张说明卡。底部左侧为上一步、右侧为推进操作，右上角关闭与 Escape 均先确认，并告知可在设置 → 通用重新开始。卡片自动翻转和钳制，上下空间不足时优先放在锚点侧边，箭头随真实锚点位置调整；不锁焦点，按钮使用现有 Indigo token 和可见焦点环，`prefers-reduced-motion` 下关闭位移和脉冲。
+
 ## 边框宽度
 
 两套边框**未强行统一**，仅命名：`--fn-border-width`(1px，菜单/输入/设置/历史，包括助手紧凑输入器) 与 `--fn-border-hair`(0.5px，助手卡片/浮层 macOS 发丝线)。强制统一会改变助手发丝线视觉。

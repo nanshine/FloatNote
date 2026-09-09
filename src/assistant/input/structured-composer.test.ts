@@ -60,6 +60,41 @@ describe("structured composer", () => {
     });
   });
 
+  it("atomically inserts the file starter reference and suffix without sending", async () => {
+    const { submitted, host } = await setup();
+    handle!.openFileStarter();
+    await vi.waitFor(() => expect(handle!.isPopoverOpen()).toBe(true));
+    handle!.pressKey("Enter");
+    expect(host.querySelector("[data-assistant-ref]")?.textContent).toBe("piece.md");
+    expect(handle!.getDoc()).toContain("请结合");
+    expect(handle!.getDoc()).toContain("帮我梳理核心观点");
+    expect(submitted).toEqual([]);
+  });
+
+  it("preserves a draft when opening skills or choosing a starter", async () => {
+    await setup();
+    handle!.insertText("保留我的问题 ");
+    handle!.fillStarter("替换文字");
+    handle!.openFileStarter();
+    expect(handle!.getDoc()).toContain("保留我的问题");
+    expect(handle!.getDoc()).not.toContain("替换文字");
+    handle!.openSkillPicker();
+    expect(handle!.getDoc()).toContain("保留我的问题 /");
+  });
+
+  it("does not carry a cancelled starter suffix into a later reference", async () => {
+    const { host } = await setup();
+    handle!.openFileStarter();
+    await vi.waitFor(() => expect(handle!.isPopoverOpen()).toBe(true));
+    handle!.closePopover();
+    handle!.clear();
+    handle!.insertText("@pi");
+    await vi.waitFor(() => expect(handle!.isPopoverOpen()).toBe(true));
+    handle!.pressKey("Enter");
+    expect(host.querySelector("[data-assistant-ref]")?.textContent).toBe("piece.md");
+    expect(handle!.getDoc()).not.toContain("帮我梳理核心观点");
+  });
+
   it("uses normal structural Enter behavior in expanded mode", async () => {
     await setup();
     handle!.insertText("first");

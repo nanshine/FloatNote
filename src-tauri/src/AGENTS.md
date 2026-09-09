@@ -22,8 +22,9 @@ entry that calls `floatnote::run()`.
   (atomic write, mtime), image path safety, project-space listing.
 - `project.rs` — project-space discovery, pieces, `sanitize_folder_name`.
 - `versions.rs` — snapshot/restore/purge per-note version history.
-- `chat_history.rs` — `ChatHistoryStore` (~/.floatnote/chat-history).
-- `paths.rs` — `user_home_dir()` / `floatnote_home()` (cross-platform).
+- `chat_history.rs` — `ChatHistoryStore` (production `~/.floatnote/chat-history`, debug profile data directory).
+- `paths.rs` — one-time production/debug runtime profile and all config/data/workspace paths.
+- `commands/onboarding.rs` — atomic onboarding state, capture permission, runtime profile DTO and debug-only preview state.
 - `watcher.rs` — `notify` file watcher + self-write suppress list
   (`mark_self_write` BEFORE writes to avoid TOCTOU; uses `into_inner()` to
   survive mutex poisoning).

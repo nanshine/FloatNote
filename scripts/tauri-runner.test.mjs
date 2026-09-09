@@ -7,7 +7,7 @@ import { spawnSync } from "node:child_process";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
-import { buildTauriEnvironment } from "./tauri.mjs";
+import { buildTauriEnvironment, runTauri } from "./tauri.mjs";
 
 const root = new URL("../", import.meta.url);
 
@@ -33,6 +33,21 @@ test("non-macOS Tauri keeps the original PATH", () => {
   });
 
   assert.equal(environment.PATH, "C:\\Windows");
+});
+
+test("dev runs append the isolated development identity after caller configs", () => {
+  let spawned;
+  const status = runTauri(["dev", "--config", "src-tauri/tauri.review.conf.json"], {
+    spawn: (_command, args) => { spawned = args; return { status: 0 }; },
+  });
+  assert.equal(status, 0);
+  assert.deepEqual(spawned.slice(-4), ["--config", "src-tauri/tauri.review.conf.json", "--config", "src-tauri/tauri.dev.conf.json"]);
+});
+
+test("build runs keep the production identity", () => {
+  let spawned;
+  runTauri(["build"], { spawn: (_command, args) => { spawned = args; return { status: 0 }; } });
+  assert.ok(!spawned.includes("src-tauri/tauri.dev.conf.json"));
 });
 
 test("the DMG SetFile shim removes Tauri's custom volume icon", {

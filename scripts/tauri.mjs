@@ -23,9 +23,12 @@ export function buildTauriEnvironment(options = {}) {
 }
 
 export function runTauri(args, options = {}) {
+  const effectiveArgs = args[0] === "dev"
+    ? [...args, "--config", "src-tauri/tauri.dev.conf.json"]
+    : args;
   const result = (options.spawn ?? spawnSync)(
     process.execPath,
-    [tauriCli, ...args],
+    [tauriCli, ...effectiveArgs],
     {
       cwd: options.cwd ?? process.cwd(),
       env: buildTauriEnvironment(options),

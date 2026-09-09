@@ -239,6 +239,7 @@ pub async fn translate_popup_selection(
 #[tauri::command]
 pub fn open_ai_settings(app: AppHandle) {
     crate::windows::show_settings(&app);
+    let _ = app.emit_to("settings", "settings://navigate", "ai");
 }
 
 /// Payload emitted to the `selection-popup` window on capture.

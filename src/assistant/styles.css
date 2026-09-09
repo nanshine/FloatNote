@@ -69,6 +69,24 @@
   width: 0;
 }
 
+.assistant-empty {
+  align-self: stretch;
+  margin: auto 0;
+  padding: 18px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  text-align: left;
+}
+.assistant-empty > i { color: var(--color-accent); font-size: 22px; }
+.assistant-empty h2 { margin: 8px 0 4px; font-size: 15px; }
+.assistant-empty p { margin: 0 0 14px; color: var(--color-text-muted); font-size: 12px; line-height: 1.55; }
+.assistant-starters-toggle { width: 100%; min-height: 32px; border: 0; background: transparent; color: var(--color-text); font-weight: 600; text-align: left; cursor: pointer; }
+.assistant-starters { display: grid; gap: 7px; margin-top: 8px; }
+.assistant-starters button { min-height: 38px; padding: 8px 10px; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface-2); color: var(--color-text); text-align: left; cursor: pointer; }
+.assistant-starters button:hover { border-color: var(--color-border-strong); background: var(--color-hover); }
+.assistant-starters .assistant-starters-collapse { min-height: 30px; border-color: transparent; background: transparent; color: var(--color-text-muted); }
+
 .assistant-scroll-bottom {
   position: absolute;
   right: 14px;

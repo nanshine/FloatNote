@@ -9,8 +9,17 @@ import { mountShortcutSettings } from "./shortcuts";
 import { mountTabs, settingsShellMarkup } from "./shell";
 import type { Config } from "./types";
 import { mountOutputMode } from "./output-mode";
+import { listen } from "@tauri-apps/api/event";
+import { getRuntimeProfile } from "../platform/onboarding";
+import { mountOnboardingSettings } from "./onboarding-lab";
 
 const app = document.querySelector<HTMLElement>("#app")!;
+let navigate: ((name: string) => void) | null = null;
+let pendingNavigation: string | null = null;
+void listen<string>("settings://navigate", (event) => {
+  if (navigate) navigate(event.payload);
+  else pendingNavigation = event.payload;
+});
 
 async function render(): Promise<void> {
   initializeAppearance();
@@ -20,9 +29,12 @@ async function render(): Promise<void> {
     config.ai_settings ??= createEmptyAiSettings();
     config.assistant_output_mode = config.assistant_output_mode === "detailed" ? "detailed" : "compact";
     app.innerHTML = settingsShellMarkup();
-    mountTabs(app);
+    navigate = mountTabs(app);
+    if (pendingNavigation) { navigate(pendingNavigation); pendingNavigation = null; }
     const save = () => invoke<void>("set_config", { newConfig: config });
     mountGeneralSettings(app.querySelector<HTMLElement>("#general-settings")!, config, save);
+    const runtime = await getRuntimeProfile();
+    mountOnboardingSettings(app.querySelector<HTMLElement>("#onboarding-settings")!, runtime.isDebug);
     mountProviderSettings(app.querySelector<HTMLElement>("#provider-settings")!, config.ai_settings, {
       saveProvider: (providerId, providerConfig) => invoke("save_ai_provider", { providerId, providerConfig }),
       setActiveProvider: (providerId) => invoke("set_active_ai_provider", { providerId }),

@@ -4,7 +4,7 @@
 
 ## 领域与 adapter
 
-- `commands.rs` 与 `commands/{agent,chat,settings,versions}.rs` 是 Tauri command adapter。它们只做 payload 转换、授权、错误映射和领域调用。
+- `commands.rs` 与 `commands/{agent,chat,onboarding,settings,versions}.rs` 是 Tauri command adapter。它们只做 payload 转换、授权、错误映射和领域调用；onboarding 进度经专用原子命令保存，通用 `set_config` 会保留当前进度，避免多窗口旧快照覆盖。
 - `notes.rs`、`project.rs`、`versions.rs` 负责文件、项目空间和版本快照；项目空间文件操作不应写入 command adapter。
 - `agent.rs` 是 `agent/{provider,service,session,skills,tools,workspace}.rs` 的入口，负责 Rig 适配、流事件、会话、受限 project-space 与 mutation transaction。
 - `chat_history.rs`、`paths.rs`、`watcher.rs` 处理聊天记录、跨平台路径与文件变更。
@@ -63,3 +63,7 @@ Skill 目录清单由 Rust host 直接从打包资源、debug `resources/skills`
 `Config.theme` 持久化 `system`、`light` 或 `dark`，未知值回退为 `system`；成功保存
 主题变更后 host 广播 `theme-changed`。Serde 会忽略旧配置中的 `font_size`，后续原子
 保存自然清除遗留键，不需要破坏性迁移。
+
+`Config.onboarding` 保存版本、状态、步骤及首次采集成功标记。配置文件不存在代表新安装；已有文件缺少该字段时迁移为 `completed`，不会向升级用户自动弹出。`get_onboarding_state` / `set_onboarding_state` 与 `onboarding://changed` 构成跨窗口合同，debug-only preview 则只保存在 `AppState` 内存并广播 `onboarding://preview-changed`。
+
+`paths.rs` 在 setup 最早阶段解析一次运行档案。release 继续使用平台 `app_config_dir/config.json` 与 `~/.floatnote`；debug 使用 `src-tauri/target/dev-profiles/{profile}` 下的 `config.json`、`data/chat-history`、`data/skills` 和 `workspace`，其中 `FLOATNOTE_DEV_PROFILE` 仅在 debug 生效。所有聊天历史和导入 Skill 均通过这一解析器取路径。

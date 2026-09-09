@@ -762,6 +762,7 @@ export const codeBlockView = $view(codeBlockSchema.node, (): NodeViewConstructor
     const handle = createBlockHandle("选择整个代码块");
     const language = document.createElement("input");
     language.className = "fn-structured-codeblock__language";
+    language.dataset.focusStyle = "quiet";
     language.value = String(node.attrs.language ?? "");
     language.placeholder = "language";
     const codeHost = document.createElement("div");

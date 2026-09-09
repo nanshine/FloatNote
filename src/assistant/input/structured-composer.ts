@@ -31,7 +31,7 @@ export interface ComposerOptions {
   listSkills: () => Promise<SkillSummary[]>;
   onSubmit: (payload: PromptPayload) => Promise<boolean>;
   onEmptySend?: () => void;
-  onChange?: () => void;
+  onChange?: (empty: boolean) => void;
   onLargeChange?: (large: boolean) => void;
 }
 
@@ -55,6 +55,8 @@ export interface ComposerHandle {
   setScope: (scope: ChatScope | null) => void;
   submit: () => void;
   openSkillPicker: () => void;
+  openFileStarter: () => void;
+  fillStarter: (text: string) => void;
 }
 
 interface RefMenu {
@@ -76,6 +78,7 @@ export function mountComposer(options: ComposerOptions): ComposerHandle {
   let destroyed = false;
   let large = false;
   let triggerToken = 0;
+  let starterSuffix = "";
   const cleanups: (() => void)[] = [];
 
   const menu: RefMenu = {
@@ -278,6 +281,7 @@ export function mountComposer(options: ComposerOptions): ComposerHandle {
   }
 
   function closeMenu(): void {
+    starterSuffix = "";
     menu.el.hidden = true;
     menu.candidates = [];
     menu.trigger = null;
@@ -333,16 +337,19 @@ export function mountComposer(options: ComposerOptions): ComposerHandle {
     const trigger = menu.trigger;
     editor.withView((view) => {
       const type = view.state.schema.nodes.assistant_ref;
-      view.dispatch(view.state.tr.replaceWith(trigger.from, trigger.to, type.create({
+      const nodes = [type.create({
         kind: ref.kind,
         id: ref.id,
         display: ref.display,
         noteKind: ref.meta?.noteKind ?? null,
-      })));
+      })];
+      if (starterSuffix) nodes.push(view.state.schema.text(starterSuffix));
+      view.dispatch(view.state.tr.replaceWith(trigger.from, trigger.to, Fragment.fromArray(nodes)));
     });
+    starterSuffix = "";
     closeMenu();
     editor.focus();
-    options.onChange?.();
+    options.onChange?.(false);
   }
 
   function submit(): void {
@@ -360,7 +367,7 @@ export function mountComposer(options: ComposerOptions): ComposerHandle {
         pendingMarkdown = "";
         closeMenu();
         overlay.collapse();
-        options.onChange?.();
+        options.onChange?.(true);
       }
     }).catch(() => false).finally(() => { submitting = false; });
   }
@@ -374,7 +381,7 @@ export function mountComposer(options: ComposerOptions): ComposerHandle {
     onChange(markdown) {
       pendingMarkdown = markdown;
       void recompute();
-      options.onChange?.();
+      options.onChange?.(!markdown.trim() && refs().length === 0);
     },
     onSelectionChange: () => { void recompute(); },
     handleKeyDown(event) {
@@ -435,7 +442,17 @@ export function mountComposer(options: ComposerOptions): ComposerHandle {
     expandLarge: overlay.expand,
     setScope(scope) { currentScope = scope; fileCache = null; },
     submit,
-    openSkillPicker() { handle.insertText("/"); void recompute(); editor?.focus(); },
+    openSkillPicker() { starterSuffix = ""; handle.insertText("/"); options.onChange?.(false); void recompute(); editor?.focus(); },
+    openFileStarter() {
+      if (!handle.isEmpty()) return;
+      handle.clear();
+      starterSuffix = "，帮我梳理核心观点。";
+      handle.insertText("请结合 @");
+      options.onChange?.(false);
+      void recompute();
+      editor?.focus();
+    },
+    fillStarter(text) { if (!handle.isEmpty()) return; handle.clear(); handle.insertText(text); options.onChange?.(false); editor?.focus(); },
   };
   return handle;
 }

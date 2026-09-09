@@ -8,3 +8,7 @@ FloatNote 面向 macOS 和 Windows。路径、文件监听、窗口行为与系�
 - UI：设置窗口默认 `780 × 620`、最小 `720 × 520`，允许缩放和最大化。macOS 使用原生装饰与 Overlay 标题栏，38px 空白外壳区域可拖动并保留系统红绿灯；不抢焦点的划词弹窗使用独立、仅在可见期间启用的 listen-only mouse-move event tap，以 30Hz 合并坐标并驱动 WebView 的被动 hover 状态。不要依赖 `NSWindow.acceptsMouseMovedEvents`：Tao 已默认开启该标志，而 WebKit 内部 tracking area 在应用未激活时仍不会持续驱动 CSS `:hover`。Windows 保留原生最小化、最大化与关闭控件，不模拟红绿灯。内容信息架构和卡片间距在两个平台一致。改动这些区域时，应在 macOS 与 Windows 各验证一次。
 - 窗内键盘：macOS 使用 Cmd、Windows 使用 Ctrl 作为主修饰键。主笔记字号快捷键在前端统一消费 `+`、`-`、`0`，只改变结构化编辑器的 `--editor-font`，不能依赖或触发各 WebView 不一致的页面缩放。
 - 发布：Rig 与 TLS 静态链接进各目标的 Rust 主程序；必须在 macOS 与 Windows 原生 runner 分别验证 Provider 网络和包体积。
+
+## 引导与捕获权限
+
+`get_capture_permission_state` 在 macOS 返回 `required/granted`，Windows 返回 `not_required`；Onboarding Lab 的权限场景只模拟 UI，不改变系统授权。真实 macOS 回归可运行 `tccutil reset Accessibility com.floatnote.desktop.dev` 后重启 FloatNote Dev，这会真实修改系统权限状态。引导切入双栏前使用显示器 `workArea` 与 `scaleFactor` 换算逻辑像素；工作区容不下双栏最小宽度时必须保留当前窗口并给出可恢复反馈。

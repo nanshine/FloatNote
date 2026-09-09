@@ -25,8 +25,8 @@ export interface EmptyStateProps {
   /** Optional sub-line. May interpolate user data (e.g. project name) — it is
    * HTML-escaped before injection. */
   hint?: string;
-  /** Optional emoji or short glyph shown above the title. */
-  icon?: string;
+  /** Typed Phosphor icon name, keeping platform-dependent emoji out of UI chrome. */
+  icon?: "pen-nib" | "warning-circle" | "file-text";
   primary?: EmptyStateAction;
   secondary?: EmptyStateAction;
   tertiary?: EmptyStateAction;
@@ -35,7 +35,7 @@ export interface EmptyStateProps {
 /** Build the inner HTML for an empty-state card. Pure: no DOM, no I/O. */
 export function emptyStateMarkup(props: EmptyStateProps): string {
   const icon = props.icon
-    ? `<div class="fn-empty__icon">${escapeHtml(props.icon)}</div>`
+    ? `<div class="fn-empty__icon" aria-hidden="true"><i class="ph ph-${props.icon}"></i></div>`
     : "";
   const hint = props.hint
     ? `<p class="fn-empty__hint">${escapeHtml(props.hint)}</p>`
