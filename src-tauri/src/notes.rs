@@ -69,7 +69,11 @@ pub(crate) fn sort_newest_first<T>(mut entries: Vec<(std::time::SystemTime, T)>)
 
 pub fn rename_note(dir: &Path, old_name: &str, new_stem: &str) -> std::io::Result<String> {
     let target = dir.join(format!("{new_stem}.md"));
-    if target.exists() {
+    // 大小写不敏感的文件系统（Windows NTFS、默认 macOS）上，把 "floatnote.md" 改名为
+    // "Floatnote.md" 时 target.exists() 会命中源文件本身，误报“已存在”。仅大小写
+    // 不同的改名是合法操作（重命名同一文件），不应视为冲突。
+    let case_only_rename = old_name.to_lowercase() == new_stem.to_lowercase();
+    if target.exists() && !case_only_rename {
         return Err(std::io::Error::new(
             std::io::ErrorKind::AlreadyExists,
             "target exists",
@@ -404,6 +408,22 @@ mod tests {
         assert!(dir.path().join("new.md").exists());
         std::fs::write(dir.path().join("a.md"), "x").unwrap();
         assert!(rename_note(dir.path(), "a", "new").is_err());
+    }
+
+    #[test]
+    fn rename_allows_case_only_change() {
+        // 大小写不敏感 FS（Windows NTFS / 默认 macOS）上，"Floatnote.md".exists()
+        // 会命中源文件 "floatnote.md" 本身；仅大小写不同的改名必须放行，而非误报
+        // "target exists"。（在大小写敏感 FS 上，目标本就不存在，同样应成功。）
+        let dir = tempdir();
+        std::fs::write(dir.path().join("floatnote.md"), "body").unwrap();
+        let new_path = rename_note(dir.path(), "floatnote", "Floatnote").unwrap();
+        assert!(new_path.ends_with("Floatnote.md"));
+        assert!(dir.path().join("Floatnote.md").exists());
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("Floatnote.md")).unwrap(),
+            "body"
+        );
     }
 
     #[test]

@@ -1,6 +1,10 @@
 import socratesIconSvg from "../assets/socrates_head_icon.svg?raw";
 import { createIcon } from "../shared/ui/icon";
 import {
+  mountCaptionButtons,
+  wireDragRegionToggleMaximize,
+} from "../shared/ui/window-caption";
+import {
   viewToIdx,
   maxReachableIdx,
   type Reach,
@@ -49,6 +53,10 @@ export function renderTitlebar(root: HTMLElement, callbacks: TitlebarCallbacks) 
     </div>
   `;
   root.querySelector<HTMLElement>("#assistant-btn")!.onclick = () => callbacks.onAssistantToggle();
+  // Windows：系统标题栏已去除，补自绘 min/max/close 与拖拽区双击最大化；
+  // macOS 与浏览器 review 环境下两个调用均早退。
+  mountCaptionButtons(root.querySelector<HTMLElement>(".titlebar")!);
+  wireDragRegionToggleMaximize(root.querySelector<HTMLElement>(".titlebar-drag")!);
 }
 
 export function renderTopbar(root: HTMLElement, callbacks: TopbarCallbacks) {

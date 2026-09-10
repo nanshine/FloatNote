@@ -197,8 +197,15 @@ pub fn rename_project(dir: &Path, new_name: &str) -> std::io::Result<String> {
             "project has no parent dir",
         )
     })?;
-    let target = parent.join(sanitize_folder_name(new_name));
-    if target.exists() && target != dir {
+    let new_folder = sanitize_folder_name(new_name);
+    let target = parent.join(&new_folder);
+    // 大小写不敏感的文件系统（Windows NTFS、默认 macOS）上，把 "floatnote" 改名为
+    // "Floatnote" 时 target.exists() 会命中源目录本身。现有的 `target != dir` 是逐字节
+    // （区分大小写）比较，识别不了这种仅大小写不同的改名，故再补一个大小写无关的源名比较。
+    let current_folder = dir.file_name().and_then(|name| name.to_str()).unwrap_or("");
+    let case_only_rename =
+        !current_folder.is_empty() && current_folder.to_lowercase() == new_folder.to_lowercase();
+    if target.exists() && target != dir && !case_only_rename {
         return Err(std::io::Error::new(
             std::io::ErrorKind::AlreadyExists,
             "target exists",
@@ -372,6 +379,21 @@ mod tests {
         std::fs::create_dir_all(&other).unwrap();
         std::fs::write(other.join(INBOX_FILE), "").unwrap();
         assert!(rename_project(Path::new(&new_path), "other").is_err());
+    }
+
+    #[test]
+    fn rename_project_allows_case_only_change() {
+        // 大小写不敏感 FS（Windows NTFS / 默认 macOS）上，把 "floatnote" 改为
+        // "Floatnote" 时 target.exists() 会命中源目录本身，`target != dir`（区分大小写）
+        // 也拦不住；必须放行这种仅大小写不同的改名。
+        let root = tempdir();
+        let dir = root.path().join("floatnote");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join(INBOX_FILE), "").unwrap();
+
+        let new_path = rename_project(&dir, "Floatnote").unwrap();
+        assert!(new_path.ends_with("Floatnote"));
+        assert!(is_project_dir(Path::new(&new_path)));
     }
 
     #[test]

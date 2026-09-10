@@ -20,6 +20,8 @@ mod trash;
 mod tray;
 mod versions;
 mod watcher;
+#[cfg(target_os = "windows")]
+mod window_chrome;
 mod windows;
 
 #[cfg(test)]
@@ -154,11 +156,21 @@ pub fn run() {
             // Hide instead of close the note window so it can be re-opened later.
             if let Some(note_win) = app.get_webview_window("main") {
                 let handle = app.handle().clone();
-                note_win.on_window_event(move |event| {
-                    if let WindowEvent::CloseRequested { api, .. } = event {
+                note_win.on_window_event(move |event| match event {
+                    WindowEvent::CloseRequested { api, .. } => {
                         api.prevent_close();
                         crate::windows::set_note_visible(&handle, false);
                     }
+                    // WebView2 draws the IME composition window from a caret
+                    // anchor that goes stale when the host window moves or
+                    // resizes, so let the note window re-anchor it once the
+                    // gesture settles. Windows-only: no other platform needs it.
+                    #[cfg(target_os = "windows")]
+                    WindowEvent::Moved(_) | WindowEvent::Resized(_) => {
+                        use tauri::Emitter;
+                        let _ = handle.emit_to("main", "window-geometry-changed", ());
+                    }
+                    _ => {}
                 });
             }
 
@@ -171,6 +183,17 @@ pub fn run() {
                         let _ = win.hide();
                     }
                 });
+            }
+
+            // Windows：去掉系统标题栏（左上角图标 + 系统色按钮区），
+            // min/max/close 改由前端自绘；macOS 保留 Overlay 原生红绿灯。
+            #[cfg(target_os = "windows")]
+            {
+                for label in ["main", "settings"] {
+                    if let Some(window) = app.get_webview_window(label) {
+                        window_chrome::strip_decorations(&window);
+                    }
+                }
             }
 
             tray::build_tray(app.handle())?;

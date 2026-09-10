@@ -26,7 +26,7 @@
     "test:frontend": "vitest run",
     "test:infra": "node --test ./scripts/*.test.mjs",
     "test": "npm run test:frontend && npm run test:infra",
-    "icon:generate": "tauri icon src-tauri/icons/app-icon.png -o src-tauri/icons",
+    "icon:generate": "node ./scripts/app-icon.mjs",
     "version:check": "node ./scripts/release-version.mjs check",
     "version:set": "node ./scripts/release-version.mjs set",
     "ci:local": "node ./scripts/local-ci.mjs ci",

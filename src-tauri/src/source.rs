@@ -4,13 +4,16 @@
 //! macOS Automation consent; on denial/timeout/unknown bundle we fall back to
 //! app-name-only). Never returns None when the frontmost app can be identified.
 
+#[cfg(target_os = "macos")]
 use std::process::Command;
+#[cfg(target_os = "macos")]
 use std::time::Duration;
 
 /// Distinguishes a browser-tab source (has URL) from a plain app source.
 #[derive(serde::Serialize, Clone)]
 #[serde(rename_all = "lowercase")]
 pub enum SourceKind {
+    #[cfg(any(target_os = "macos", test))]
     Web,
     App,
 }
@@ -84,19 +87,8 @@ pub fn capture_source(app: &tauri::AppHandle) -> Option<Source> {
     })
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 pub fn capture_source(_app: &tauri::AppHandle) -> Option<Source> {
-    #[cfg(target_os = "windows")]
-    {
-        let pid = frontmost_pid()?;
-        return Some(Source {
-            kind: SourceKind::App,
-            title: windows_app_name(pid),
-            url: None,
-            bundle_id: Some(format!("windows:{pid}")),
-        });
-    }
-    #[cfg(not(target_os = "windows"))]
     None
 }
 
@@ -259,13 +251,8 @@ pub fn frontmost_pid() -> Option<i32> {
     }
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 pub fn frontmost_pid() -> Option<i32> {
-    #[cfg(target_os = "windows")]
-    {
-        return foreground_target().map(|target| target.pid);
-    }
-    #[cfg(not(target_os = "windows"))]
     None
 }
 
@@ -324,6 +311,7 @@ fn windows_app_name(pid: i32) -> String {
 /// Build a per-family osascript that returns `URL\nTitle` of the active tab,
 /// or None if the bundle is not a supported browser. Uses `tell application id`
 /// so localization of the app name cannot break the script.
+#[cfg(any(target_os = "macos", test))]
 fn browser_script(bundle_id: &str) -> Option<String> {
     let normalized = bundle_id.to_ascii_lowercase();
     let chromium = [
@@ -348,6 +336,7 @@ fn browser_script(bundle_id: &str) -> Option<String> {
 }
 
 /// Run the browser-tab osascript for `bundle_id`. Returns (url, title) on success.
+#[cfg(target_os = "macos")]
 fn browser_tab(bundle_id: &str) -> Option<(String, String)> {
     let script = browser_script(bundle_id)?;
     let out = run_osascript(script, Duration::from_secs(2))?;
@@ -363,6 +352,7 @@ fn browser_tab(bundle_id: &str) -> Option<(String, String)> {
 /// Run `osascript -e <script>` with a hard timeout. Returns trimmed stdout on
 /// success. Spawns a thread + channel so a hung script cannot freeze capture;
 /// on timeout the osascript child is left to the OS (rare, best-effort).
+#[cfg(target_os = "macos")]
 fn run_osascript(script: String, timeout: Duration) -> Option<String> {
     use std::sync::mpsc;
     let (tx, rx) = mpsc::channel();

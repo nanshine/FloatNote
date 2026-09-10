@@ -7,6 +7,11 @@ import { mountGeneralSettings } from "./general";
 import { mountSkills } from "./skills";
 import { mountShortcutSettings } from "./shortcuts";
 import { mountTabs, settingsShellMarkup } from "./shell";
+import {
+  mountCaptionButtons,
+  mountResizeEdges,
+  wireDragRegionToggleMaximize,
+} from "../shared/ui/window-caption";
 import type { Config } from "./types";
 import { mountOutputMode } from "./output-mode";
 import { connectSettingsNavigation } from "./navigation";
@@ -28,6 +33,11 @@ async function render(): Promise<void> {
     app.innerHTML = settingsShellMarkup();
     disconnectNavigation?.();
     disconnectNavigation = await connectSettingsNavigation(mountTabs(app));
+    // Windows：系统标题栏已去除，补自绘 min/max/close、双击最大化与边缘缩放。
+    const titlebar = app.querySelector<HTMLElement>(".settings-titlebar")!;
+    mountCaptionButtons(titlebar);
+    wireDragRegionToggleMaximize(titlebar.querySelector<HTMLElement>(".titlebar-drag")!);
+    mountResizeEdges();
     const save = () => invoke<void>("set_config", { newConfig: config });
     mountGeneralSettings(app.querySelector<HTMLElement>("#general-settings")!, config, save);
     const runtime = await getRuntimeProfile();

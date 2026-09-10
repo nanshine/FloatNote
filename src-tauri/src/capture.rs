@@ -125,10 +125,12 @@ pub struct CurrentSelection {
     pub method: SelectionMethod,
 }
 
+#[cfg(any(target_os = "macos", test))]
 fn normalized(text: &str) -> String {
     text.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
+#[cfg(any(target_os = "macos", test))]
 fn merge_html(mut ax: CurrentSelection, copied: Option<CurrentSelection>) -> CurrentSelection {
     if let Some(copied) = copied {
         if normalized(&ax.text) == normalized(&copied.text) {

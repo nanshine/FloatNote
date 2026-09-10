@@ -1,8 +1,14 @@
 // @vitest-environment jsdom
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createProjectMenuRenderer, fileManagerRevealLabel } from "./project-menu-render";
 
 describe("project menu renderer", () => {
+  // promptRename 会把 host 替换为 input 并挂到 body；每个用例后清空，避免
+  // 多个用例的 .switch-new-input 残留导致 querySelector 命中陈旧节点。
+  afterEach(() => {
+    document.body.replaceChildren();
+  });
+
   it("uses the native file-manager name in the reveal action", () => {
     expect(fileManagerRevealLabel("MacIntel")).toBe("在 Finder 中显示");
     expect(fileManagerRevealLabel("Win32")).toBe("在文件资源管理器中显示");
@@ -28,6 +34,90 @@ describe("project menu renderer", () => {
     expect(closeMenu).not.toHaveBeenCalled();
 
     input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+    await vi.waitFor(() => expect(commit).toHaveBeenCalledWith("新名称"));
+  });
+
+  it("commits the rename when the input blurs with a changed value", async () => {
+    const closeMenu = vi.fn();
+    const renderer = createProjectMenuRenderer({
+      closeMenu,
+      closeSubmenu: vi.fn(),
+      openSubmenu: vi.fn(),
+      isSubmenuOpenFor: () => false,
+    });
+    const host = document.createElement("div");
+    document.body.append(host);
+    const commit = vi.fn().mockResolvedValue(undefined);
+    renderer.promptRename(host, "旧名称", commit);
+    const input = document.querySelector<HTMLInputElement>(".switch-new-input")!;
+    input.value = "新名称";
+
+    input.dispatchEvent(new FocusEvent("blur"));
+    await vi.waitFor(() => expect(commit).toHaveBeenCalledWith("新名称"));
+    expect(closeMenu).toHaveBeenCalled();
+  });
+
+  it("closes without committing when the input blurs unchanged", async () => {
+    const closeMenu = vi.fn();
+    const renderer = createProjectMenuRenderer({
+      closeMenu,
+      closeSubmenu: vi.fn(),
+      openSubmenu: vi.fn(),
+      isSubmenuOpenFor: () => false,
+    });
+    const host = document.createElement("div");
+    document.body.append(host);
+    const commit = vi.fn().mockResolvedValue(undefined);
+    renderer.promptRename(host, "旧名称", commit);
+    const input = document.querySelector<HTMLInputElement>(".switch-new-input")!;
+
+    input.dispatchEvent(new FocusEvent("blur"));
+    await vi.waitFor(() => expect(closeMenu).toHaveBeenCalled());
+    expect(commit).not.toHaveBeenCalled();
+  });
+
+  it("cancels on Escape and ignores a blur that follows", () => {
+    const closeMenu = vi.fn();
+    const renderer = createProjectMenuRenderer({
+      closeMenu,
+      closeSubmenu: vi.fn(),
+      openSubmenu: vi.fn(),
+      isSubmenuOpenFor: () => false,
+    });
+    const host = document.createElement("div");
+    document.body.append(host);
+    const commit = vi.fn().mockResolvedValue(undefined);
+    renderer.promptRename(host, "旧名称", commit);
+    const input = document.querySelector<HTMLInputElement>(".switch-new-input")!;
+    input.value = "新名称";
+
+    input.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+    expect(closeMenu).toHaveBeenCalled();
+    expect(commit).not.toHaveBeenCalled();
+
+    // 菜单关闭移除 input 后触发的 blur 不应再提交。
+    input.dispatchEvent(new FocusEvent("blur"));
+    expect(commit).not.toHaveBeenCalled();
+  });
+
+  it("commits on an outside pointerdown before the menu dismisses the input", async () => {
+    const closeMenu = vi.fn();
+    const renderer = createProjectMenuRenderer({
+      closeMenu,
+      closeSubmenu: vi.fn(),
+      openSubmenu: vi.fn(),
+      isSubmenuOpenFor: () => false,
+    });
+    const host = document.createElement("div");
+    document.body.append(host);
+    const commit = vi.fn().mockResolvedValue(undefined);
+    renderer.promptRename(host, "旧名称", commit);
+    const input = document.querySelector<HTMLInputElement>(".switch-new-input")!;
+    input.value = "新名称";
+
+    const outside = document.createElement("div");
+    document.body.append(outside);
+    outside.dispatchEvent(new Event("pointerdown", { bubbles: true }));
     await vi.waitFor(() => expect(commit).toHaveBeenCalledWith("新名称"));
   });
 

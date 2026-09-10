@@ -259,3 +259,55 @@ select.fn-control {
   gap: var(--space-2);
   margin-top: var(--space-5);
 }
+
+/* ── Windows 自绘窗口控件（custom chrome） ──────────────────────────────
+   Rust 侧去除了系统标题栏，按钮组随应用主题着色；仅在 `window-caption.ts`
+   挂载（Windows + Tauri）时出现，macOS 与浏览器 review 不渲染。 */
+.caption-buttons {
+  display: inline-flex;
+  align-items: stretch;
+  align-self: stretch;
+}
+
+.caption-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+
+.caption-btn:hover {
+  background: var(--color-hover);
+  color: var(--color-text);
+}
+
+/* Windows 约定：关闭钮悬停为系统红。 */
+.caption-btn.caption-close:hover {
+  background: #e81123;
+  color: #fff;
+}
+
+/* 无边框窗口的边缘缩放热区（仅 Windows custom chrome 挂载）。 */
+.resize-edge {
+  position: fixed;
+  z-index: 1000;
+}
+.resize-edge-n { top: 0; left: 0; right: 0; height: 5px; cursor: ns-resize; }
+.resize-edge-s { bottom: 0; left: 0; right: 0; height: 5px; cursor: ns-resize; }
+.resize-edge-e { right: 0; top: 0; bottom: 0; width: 5px; cursor: ew-resize; }
+.resize-edge-w { left: 0; top: 0; bottom: 0; width: 5px; cursor: ew-resize; }
+.resize-edge-ne { top: 0; right: 0; width: 8px; height: 8px; cursor: nesw-resize; }
+.resize-edge-sw { bottom: 0; left: 0; width: 8px; height: 8px; cursor: nesw-resize; }
+.resize-edge-nw { top: 0; left: 0; width: 8px; height: 8px; cursor: nwse-resize; }
+.resize-edge-se { bottom: 0; right: 0; width: 8px; height: 8px; cursor: nwse-resize; }
+
+/* 最大化时窗口不可缩放，隐藏热区（由 window-caption.ts 同步该类）。 */
+html.window-maximized .resize-edge {
+  display: none;
+}

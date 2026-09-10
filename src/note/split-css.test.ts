@@ -167,6 +167,15 @@ describe("split view CSS placement", () => {
     expect(css).toMatch(/#piece-topbar-root,\s*\.tag-bar\s*{[^}]*padding:\s*6px 14px;[^}]*border-bottom:\s*1px solid var\(--color-divider\);/s);
   });
 
+  // 头部（标题栏 + 顶栏）必须固定：文档层不得成为滚动视口，内层滚动也不得链式
+  // 传播到 body，否则整个应用外壳会随正文一起上下滑动。
+  it("pins the app shell so the chrome never scrolls with the content", () => {
+    expect(css).toMatch(/html,\s*body\s*{[^}]*overflow:\s*hidden;[^}]*overscroll-behavior:\s*none;/s);
+    expect(css).toMatch(/#app\s*{[^}]*overflow:\s*hidden;/s);
+    expect(css).toMatch(/#titlebar-root,\s*#topbar-root\s*{[^}]*flex:\s*0 0 auto;/s);
+    expect(css).toMatch(/\.note-scroll\s*{[^}]*overscroll-behavior:\s*contain;/s);
+  });
+
   it("gives the floating assistant a soft background without bubble borders", () => {
     // 浮层卡片：磨砂半透背景 + 阴影，无边框（气泡自身有底，卡片不重复边框）。
     expect(css).toMatch(

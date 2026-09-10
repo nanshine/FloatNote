@@ -3,15 +3,21 @@
   color-scheme: light dark;
 }
 
+/* 文档层是应用外壳，不是滚动视口：滚动只发生在 .note-scroll 等内层容器里。
+   缺了 overflow:hidden，编辑器光标的 scrollIntoView 与边界处的滚动链会滚动
+   body，把标题栏 / 顶栏一起带出视口（Windows 与 macOS 皆然）。 */
 html,
 body {
   height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
 }
 
 #app {
   display: flex;
   flex-direction: column;
   height: 100%;
+  overflow: hidden;
   /* 由 layout-controller 按窗口宽度写入：左边距 / 正文宽 / 右边距 / 助手宽 / 小人横坐标。 */
   --left: 14px;
   --text: 720px;
@@ -30,6 +36,13 @@ body {
   --action-h: 0px;
 }
 
+/* 两行 chrome 是 #app 的固定项：默认 flex-shrink:1 会与内部 min-height 打架，
+   把外壳撑出 100% 之外。显式不伸不缩，高度只由自身内容决定。 */
+#titlebar-root,
+#topbar-root {
+  flex: 0 0 auto;
+}
+
 /* 第一行：标题栏。macOS 经 Overlay 与系统标题栏合并，左侧留位给红绿灯。 */
 .titlebar {
   display: flex;
@@ -39,6 +52,11 @@ body {
   background: var(--color-surface-2);
   -webkit-user-select: none;
   user-select: none;
+}
+
+/* Windows 自绘标题栏：左侧不再为红绿灯让位，右侧关闭钮贴窗口边缘。 */
+html.custom-chrome .titlebar {
+  padding: 0 0 0 10px;
 }
 
 .titlebar-drag {
@@ -350,6 +368,8 @@ body {
   overflow-x: hidden;
   overflow-y: auto;
   background: var(--color-surface);
+  /* 滚到边界后不把滚动链传给文档层，否则外壳会被一起带走。 */
+  overscroll-behavior: contain;
 }
 
 .note-scroll::-webkit-scrollbar {

@@ -126,13 +126,13 @@ spctl --assess --type execute --verbose=4 "/Volumes/FloatNote/FloatNote.app"
 
 ## 本地打包
 
-应用图标母版位于 `src-tauri/icons/app-icon.png`。它基于历史原图进行保守修复，保留原始纸张和符号，仅移除了外围白色画布。修改母版后先重新生成各平台资源，并检查变更，再进行打包：
+应用图标母版位于 `src-tauri/icons/app-icon.png`。它基于历史原图进行保守修复，保留原始纸张和符号，仅移除了外围白色画布，并保持满幅方形作为唯一权威源。`npm run icon:generate`（`scripts/app-icon.mjs`）在母版基础上派生各平台资源：先把母版内缩到约 88% 居中放在透明画布上（四周约 6% 透明留白）、再对其外框施加约 12% 的克制圆角（参照微软 Windows 图标 48px 网格：外圆角小、带留白），生成中间产物 `app-icon-rounded.png`，随后交给 `tauri icon` 展开为 PNG、ICNS、ICO 及 iOS、Android、Windows Store 尺寸。这样 Windows 任务栏/桌面显示为一个四周留白、圆角克制的浮起方块，而非顶满边框的生硬直角方块（macOS 系统本身也会裁圆角）。修改母版后先重新生成，并检查变更，再进行打包：
 
 ```bash
 npm run icon:generate
 ```
 
-该命令会同步生成 Tauri 使用的 PNG、ICNS、ICO，以及现有 iOS、Android 和 Windows Store 尺寸；菜单栏托盘图标不受影响。
+同一命令还会从机器人剪影母版 `src-tauri/icons/tray-source.png` 重建 Windows 托盘图标 `tray-windows.png` 与 `tray-windows@2x.png`：品牌蓝灰圆角底（`#6c798d`）+ 暖白纸张色机器人（`#f7f1ea`，即 app 图标的主色）的中间调配色，确保在浅色托盘面板和深色任务栏上都清晰可辨（此前的纯白剪影在浅色背景下几乎不可见）。macOS 托盘图标 `tray.png`/`tray@2x.png` 是黑色 template 图，由系统自动重着色，不受该命令影响。
 
 FloatNote 不为 DMG 设置品牌卷图标。`npm run tauri build` 会通过 `scripts/tauri.mjs` 启动 Tauri；在 macOS 上，该包装器只拦截 Tauri `create-dmg` 对 `.VolumeIcon.icns` 的启用操作并移除该文件，因此下载的 DMG 和挂载卷使用 macOS 系统默认图标，DMG 内及安装后的 App 继续使用上述应用图标。GitHub Release 必须设置 `tauriScript: npm run tauri`，以确保签名和公证之前已经应用该行为。
 
