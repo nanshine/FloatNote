@@ -11,7 +11,9 @@ load/save/interoperability boundary, while ProseMirror state is authoritative du
   per-path debounced save queue (`scheduleSave`/`saveImmediate`/`flushAll`)
   with mtime conflict guard. `loadNote` registers last-known mtime.
 - `structured-inbox.ts` — Inbox v2 metadata ↔ ProseMirror annotation-mark bridge,
-  tag menu/filter projection, quote capture, and encoded autosave snapshots.
+  tag menu/filter projection, routed quote capture, and encoded autosave snapshots.
+- `capture.ts` — shared quote insertion/source merging for inbox and standalone
+  document editors; `note-app.ts` routes capture events by the current session.
 - `structured-media.ts` — structured-editor image paste/native drop adapter.
 - Inbox, piece, and standalone-document bodies receive the same
   `.fn-note-structured-editor` surface from `structured-editor.ts`; Inbox code may

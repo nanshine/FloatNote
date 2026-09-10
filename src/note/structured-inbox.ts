@@ -2,23 +2,18 @@ import {
   annotationProjection,
   encodeInbox,
   freeColors,
-  mapAnnotations,
-  mapQuoteSources,
   PALETTE,
   type TagDef,
   type InboxMetadata,
   type TextAnnotation,
 } from "@floatnote/note-logic";
-import { listen } from "@tauri-apps/api/event";
 import type { MarkType, Node as ProseNode } from "@milkdown/kit/prose/model";
 import type { EditorView } from "@milkdown/kit/prose/view";
 import { createStructuredMarkdownEditor, type StructuredMarkdownEditor } from "../shared/markdown/structured-editor";
 import { createMenu } from "../shared/ui/menu";
 import { showToast } from "../shared/toast";
 import { isImeComposing } from "../shared/keyboard";
-import { htmlToMarkdown } from "../shared/markdown/from-html";
-import { buildCaretInsert } from "./append";
-import { buildQuoteAppendChange, buildQuoteBlock, quoteCardRanges, resolveMergeTarget, type Source } from "./quote";
+import { captureQuote, applyQuoteSources, quoteSourcesFromNodes, type QuotePayload } from "./capture";
 
 const EMPTY_METADATA: InboxMetadata = { tags: [], annotations: [], quoteSources: [] };
 let idSequence = 0;
@@ -170,35 +165,6 @@ function removeAnnotationMark(view: EditorView, annotationType: MarkType, annota
   if (transaction.steps.length) view.dispatch(transaction);
 }
 
-function applyQuoteSources(view: EditorView, markdown: string, metadata: InboxMetadata): void {
-  const starts = [...markdown.matchAll(/^[ \t]*>\s*\[!quote\]/gim)].map((match) => match.index);
-  let index = 0;
-  let transaction = view.state.tr;
-  view.state.doc.descendants((node, pos) => {
-    if (node.type.name !== "quote_card") return;
-    const source = metadata.quoteSources.find((item) => item.cardFrom === starts[index]);
-    transaction = transaction.setNodeAttribute(pos, "bundleId", source?.bundleId ?? null);
-    index += 1;
-  });
-  if (transaction.steps.length) {
-    transaction.setMeta("addToHistory", false);
-    view.dispatch(transaction);
-  }
-}
-
-function quoteSourcesFromNodes(view: EditorView, markdown: string): InboxMetadata["quoteSources"] {
-  const starts = [...markdown.matchAll(/^[ \t]*>\s*\[!quote\]/gim)].map((match) => match.index);
-  const sources: InboxMetadata["quoteSources"] = [];
-  let index = 0;
-  view.state.doc.descendants((node) => {
-    if (node.type.name !== "quote_card") return;
-    const bundleId = typeof node.attrs.bundleId === "string" ? node.attrs.bundleId : "";
-    if (bundleId && starts[index] != null) sources.push({ cardFrom: starts[index], bundleId });
-    index += 1;
-  });
-  return sources;
-}
-
 export interface StructuredInboxHandle {
   editor: StructuredMarkdownEditor;
   tagBar: HTMLElement;
@@ -208,9 +174,10 @@ export interface StructuredInboxHandle {
   setFilter: (tagId: string | null) => void;
   setReadOnly: (readOnly: boolean) => void;
   refresh: () => void;
+  capture: (payload: QuotePayload, focus?: boolean) => boolean;
 }
 
-type QuotePayload = { text: string; html: string | null; source: Source | null };
+
 
 export async function createStructuredInbox(options: {
   parent: HTMLElement;
@@ -224,18 +191,12 @@ export async function createStructuredInbox(options: {
   let activeTag: string | null = null;
   let loading = true;
   let readOnly = false;
-  let lastCaretMarkdownOffset = 0;
   let editor!: StructuredMarkdownEditor;
   editor = await createStructuredMarkdownEditor({
     parent: options.parent,
     context: { kind: "inbox", resolveImageSrc: options.resolveImageSrc },
     placeholder: "在这里写点什么…",
     onFocus: options.onFocus,
-    onSelectionChange(selection) {
-      if (!editor) return;
-      const offset = editor.markdownOffsetAt(selection.from);
-      if (offset !== null) lastCaretMarkdownOffset = offset;
-    },
     onChange(markdown) {
       if (loading) return;
       metadata = editor.withView((view) => ({
@@ -487,76 +448,31 @@ export async function createStructuredInbox(options: {
     });
   });
 
-  void listen<QuotePayload>("quote-captured", (event) => {
-    if (readOnly) return void showToast("Inbox metadata 已损坏，修复原文件后才能继续采集");
-    const body = (event.payload.html && htmlToMarkdown(event.payload.html)) || event.payload.text;
-    const oldMarkdown = editor.getMarkdown();
-    const liveCaret = editor.withView((view) => editor.markdownOffsetAt(view.state.selection.from));
-    const caret = Math.max(0, Math.min(liveCaret ?? lastCaretMarkdownOffset, oldMarkdown.length));
-    const currentAnnotations = editor.withView((view) => annotationsFromMarks(view, oldMarkdown));
-    const target = resolveMergeTarget(oldMarkdown, caret, event.payload.source, metadata.quoteSources);
-    let change: { from: number; to: number; insert: string };
-    let nextQuoteSources = metadata.quoteSources;
-    if (target.kind === "merge") {
-      change = buildQuoteAppendChange(
-        oldMarkdown.slice(target.range.from, target.range.to),
-        target.range.from,
-        target.range.to,
-        body,
-      );
-    } else {
-      const block = buildQuoteBlock(body, event.payload.source);
-      const insert = buildCaretInsert(oldMarkdown.slice(0, target.at), oldMarkdown.slice(target.at), block);
-      change = { from: target.at, to: target.at, insert };
-      if (event.payload.source?.bundleId) {
-        nextQuoteSources = [...nextQuoteSources, {
-          cardFrom: target.at + insert.indexOf(block),
-          bundleId: event.payload.source.bundleId,
-        }];
-      }
+  function capture(payload: QuotePayload, focus = true): boolean {
+    if (readOnly) {
+      showToast("Inbox metadata 已损坏，修复原文件后才能继续采集");
+      return false;
     }
-    const nextMarkdown = `${oldMarkdown.slice(0, change.from)}${change.insert}${oldMarkdown.slice(change.to)}`;
-    const insertedAt = change.from + Math.max(0, change.insert.indexOf("[!quote]"));
-    const targetCardIndex = quoteCardRanges(nextMarkdown).findIndex((range) => (
-      range.from <= insertedAt && insertedAt <= range.to
-    ));
-    metadata = {
-      ...metadata,
-      annotations: mapAnnotations(currentAnnotations, [change]),
-      quoteSources: mapQuoteSources(oldMarkdown, nextMarkdown, nextQuoteSources, [change]),
-    };
+    metadata.annotations = editor.withView((view) => annotationsFromMarks(view, editor.getMarkdown()));
     loading = true;
     try {
-      editor.replace(nextMarkdown, { addToHistory: true });
-      editor.withView((view) => applyMetadataMarks(view, nextMarkdown, metadata));
-      editor.withView((view) => applyQuoteSources(view, nextMarkdown, metadata));
-      if (targetCardIndex >= 0) {
-        const structuralEnd = editor.withView((view) => {
-          let index = 0;
-          let end: number | null = null;
-          view.state.doc.descendants((node, pos) => {
-            if (node.type.name !== "quote_card") return;
-            if (index === targetCardIndex) end = pos + node.nodeSize - 1;
-            index += 1;
-          });
-          return end;
-        });
-        if (structuralEnd !== null) editor.setSelection(structuralEnd);
-      }
+      metadata = captureQuote(editor, payload, metadata, (markdown, nextMetadata) => {
+        editor.withView((view) => applyMetadataMarks(view, markdown, nextMetadata));
+      });
     } finally {
       loading = false;
     }
-    options.onSave(encodeInbox(nextMarkdown, metadata));
-    lastCaretMarkdownOffset = editor.withView((view) => editor.markdownOffsetAt(view.state.selection.from))
-      ?? change.from + change.insert.length;
-    editor.focus();
+    options.onSave(encodeInbox(editor.getMarkdown(), metadata));
+    if (focus) editor.focus();
     refresh();
     options.onCaptureCompleted?.();
-  });
+    return true;
+  }
 
   loading = false;
   refresh();
   return {
+    capture,
     editor,
     tagBar,
     metadata: () => metadata,
@@ -569,7 +485,6 @@ export async function createStructuredInbox(options: {
         syncFilterVisibility();
         editor.withView((view) => applyMetadataMarks(view, markdown, metadata));
         editor.withView((view) => applyQuoteSources(view, markdown, metadata));
-        lastCaretMarkdownOffset = editor.withView((view) => editor.markdownOffsetAt(view.state.selection.from)) ?? 0;
       } finally {
         loading = false;
       }

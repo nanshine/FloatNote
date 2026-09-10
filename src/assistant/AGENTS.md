@@ -62,7 +62,7 @@ into a reconciled message list with incremental DOM updates.
   clearing drafts. Preview overrides never authorize sending. New conversation
   creates a local draft; persistent sessions are created on first valid send.
 - Empty conversations render setup cards inside the real message scrollport.
-  `starters.ts` owns transparent suggestion rows immediately above the dock,
+  `starters.ts` owns opaque suggestion rows with transparent gaps immediately above the dock,
   outside the scrollport, with a current-conversation dismissal (reset when starting a new conversation) and a persistent
   localStorage opt-out (`floatnote.assistant.hideStarters`). Starter actions may fill the composer or open its file/Skill picker,
   but never send automatically or replace a non-empty draft.

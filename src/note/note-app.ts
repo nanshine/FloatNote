@@ -1,3 +1,4 @@
+import { captureQuote, type QuotePayload } from "./capture";
 import "@phosphor-icons/web/regular";
 import "../assistant/styles.css";
 import { invoke } from "@tauri-apps/api/core";
@@ -443,33 +444,40 @@ async function openPiece(entry: NoteEntry) {
   applyRemotePiece(await loadNote(entry.path));
 }
 
+let captureTargetLoading = 0;
+
 /** 打开一个独立文档：切到文档模式，复用 pieceEditor 渲染该文件。 */
 async function openDocument(doc: NoteEntry) {
-  pieceHeader?.exitVersionPreview();
-  // 独立文档无 _tasks.md：进入文档模式时把行动「临时遮挡」——记下开关并关掉，
-  // 返回项目时按记忆恢复（见 openProject）。
-  const plan = actionTargetForTransition({
-    from: session.mode,
-    to: "document",
-    currentOpen: tasksPanel.isOpen(),
-    rememberedOpen: session.actionDesiredOpen,
-  });
-  if (plan.remember !== null) session.actionDesiredOpen = plan.remember;
-  tasksPanel.setOpen(plan.open);
-  session.mode = "document";
-  session.currentDocument = doc;
-  session.recentDocuments = pushRecent(session.recentDocuments, doc.path);
-  await setRecentDocuments(session.recentDocuments);
-  setProjectLabel(doc.name);
-  clearEmptyState();
-  applyRemotePiece(await loadNote(doc.path));
-  pieceHeader?.setLabel(doc.name);
-  applyView();
-  void invoke("set_active_note", { dir: parentDir(doc.path), noteId: doc.name, path: doc.path, kind: "doc" });
-  assistantHandle.setScope(assistantController.currentScope());
-  // 独立文档不在项目目录内，停掉文件监听以免误刷新（返回项目时再 watch_dir）。
-  void invoke("unwatch_dir");
-  onboardingController?.documentOpened();
+  captureTargetLoading += 1;
+  try {
+    pieceHeader?.exitVersionPreview();
+    // 独立文档无 _tasks.md：进入文档模式时把行动「临时遮挡」——记下开关并关掉，
+    // 返回项目时按记忆恢复（见 openProject）。
+    const plan = actionTargetForTransition({
+      from: session.mode,
+      to: "document",
+      currentOpen: tasksPanel.isOpen(),
+      rememberedOpen: session.actionDesiredOpen,
+    });
+    if (plan.remember !== null) session.actionDesiredOpen = plan.remember;
+    tasksPanel.setOpen(plan.open);
+    session.mode = "document";
+    session.currentDocument = doc;
+    session.recentDocuments = pushRecent(session.recentDocuments, doc.path);
+    await setRecentDocuments(session.recentDocuments);
+    setProjectLabel(doc.name);
+    clearEmptyState();
+    applyRemotePiece(await loadNote(doc.path));
+    pieceHeader?.setLabel(doc.name);
+    applyView();
+    void invoke("set_active_note", { dir: parentDir(doc.path), noteId: doc.name, path: doc.path, kind: "doc" });
+    assistantHandle.setScope(assistantController.currentScope());
+    // 独立文档不在项目目录内，停掉文件监听以免误刷新（返回项目时再 watch_dir）。
+    void invoke("unwatch_dir");
+    onboardingController?.documentOpened();
+  } finally {
+    captureTargetLoading -= 1;
+  }
 }
 
 /** 列举项目内的 piece；失败时返回空数组并把错误上抛由调用方决定回退。 */
@@ -831,53 +839,58 @@ async function rememberDocument(path: string) {
 }
 
 async function openProject(project: ProjectEntry) {
-  pieceHeader?.exitVersionPreview();
-  // 从文档模式返回项目：按离开项目时记下的开关恢复行动面板。
-  const wasDocument = session.mode === "document";
-  session.mode = "project";
-  session.currentDocument = null;
-  session.currentProject = project;
-  await rememberProject(project.path);
-  const entry = inboxEntry(project);
-  session.currentInbox = { dir: project.path, entry };
-  setProjectLabel(project.name);
-  applyRemoteDoc(await loadNote(entry.path));
-  // 加载第一篇 piece — 不再兜底建时间戳文件；空列表 → NO_PIECE 空态。
-  let pieces: NoteEntry[];
+  captureTargetLoading += 1;
   try {
-    pieces = await loadFirstPiece();
-  } catch (err) {
-    // 项目目录在打开过程中消失（被外部删除/权限丢失）→ 回到 bootstrap 兜底。
-    console.error("list pieces failed", err);
-    session.currentProject = null;
-    session.currentInbox = null;
-    await bootstrapProjects(await getConfig());
-    return;
+    pieceHeader?.exitVersionPreview();
+    // 从文档模式返回项目：按离开项目时记下的开关恢复行动面板。
+    const wasDocument = session.mode === "document";
+    session.mode = "project";
+    session.currentDocument = null;
+    session.currentProject = project;
+    await rememberProject(project.path);
+    const entry = inboxEntry(project);
+    session.currentInbox = { dir: project.path, entry };
+    setProjectLabel(project.name);
+    applyRemoteDoc(await loadNote(entry.path));
+    // 加载第一篇 piece — 不再兜底建时间戳文件；空列表 → NO_PIECE 空态。
+    let pieces: NoteEntry[];
+    try {
+      pieces = await loadFirstPiece();
+    } catch (err) {
+      // 项目目录在打开过程中消失（被外部删除/权限丢失）→ 回到 bootstrap 兜底。
+      console.error("list pieces failed", err);
+      session.currentProject = null;
+      session.currentInbox = null;
+      await bootstrapProjects(await getConfig());
+      return;
+    }
+    const state = resolveOpenProject({ project, pieces });
+    if (state.kind === "LOADED") {
+      await openPiece(state.piece);
+    } else {
+      session.surface = "inbox";
+    }
+    renderWindowState(state);
+    tasksPanel.reload();
+    // 文档→项目恢复行动面板：reload 已加载新项目 tasks，setOpen 仅切可见态。
+    // 同模式（项目→项目）时 plan.open === 当前开关，setOpen 的 no-op 守卫不触发副作用。
+    const plan = actionTargetForTransition({
+      from: wasDocument ? "document" : "project",
+      to: "project",
+      currentOpen: tasksPanel.isOpen(),
+      rememberedOpen: session.actionDesiredOpen,
+    });
+    tasksPanel.setOpen(plan.open);
+    applyView();
+    // 发布活动笔记（= 当前项目的 _inbox.md），供独立助手窗 / apply_write 定位。
+    void invoke("set_active_note", { dir: project.path, noteId: entry.name, path: entry.path, kind: "inbox" });
+    assistantHandle.setScope(assistantController.currentScope());
+    // 切换文件监听到新项目目录。
+    void invoke("watch_dir", { dir: project.path });
+    onboardingController?.projectOpened();
+  } finally {
+    captureTargetLoading -= 1;
   }
-  const state = resolveOpenProject({ project, pieces });
-  if (state.kind === "LOADED") {
-    await openPiece(state.piece);
-  } else {
-    session.surface = "inbox";
-  }
-  renderWindowState(state);
-  tasksPanel.reload();
-  // 文档→项目恢复行动面板：reload 已加载新项目 tasks，setOpen 仅切可见态。
-  // 同模式（项目→项目）时 plan.open === 当前开关，setOpen 的 no-op 守卫不触发副作用。
-  const plan = actionTargetForTransition({
-    from: wasDocument ? "document" : "project",
-    to: "project",
-    currentOpen: tasksPanel.isOpen(),
-    rememberedOpen: session.actionDesiredOpen,
-  });
-  tasksPanel.setOpen(plan.open);
-  applyView();
-  // 发布活动笔记（= 当前项目的 _inbox.md），供独立助手窗 / apply_write 定位。
-  void invoke("set_active_note", { dir: project.path, noteId: entry.name, path: entry.path, kind: "inbox" });
-  assistantHandle.setScope(assistantController.currentScope());
-  // 切换文件监听到新项目目录。
-  void invoke("watch_dir", { dir: project.path });
-  onboardingController?.projectOpened();
 }
 
 /** 启动时打开项目：优先 MRU 列表里仍存在的第一个；MRU 为空时扫描工作目录下的
@@ -1476,6 +1489,51 @@ async function init() {
   };
 
   await loadShortcuts();
+  await listen<QuotePayload>("quote-captured", ({ payload }) => {
+    if (captureTargetLoading) {
+      showToast("文档正在加载，请稍后重新采集");
+      return;
+    }
+    if (session.mode === "document") {
+      const document = session.currentDocument;
+      if (!document) return;
+      if (versionPreview.active) {
+        showToast("请先退出版本预览再采集");
+        return;
+      }
+      captureQuote(pieceEditor, payload);
+      scheduleSave(document.path, pieceEditor.getMarkdown());
+      pieceEditor.focus();
+      return;
+    }
+    const project = session.currentProject;
+    const inbox = session.currentInbox;
+    if (!project || !inbox) {
+      showToast("请先打开项目或独立文档再采集");
+      return;
+    }
+    const writing = session.surface === "piece" && !layoutController?.isSplit();
+    if (!structuredInbox.capture(payload, !writing) || !writing) return;
+    const snapshot = structuredInbox.snapshot();
+    const selection = structuredInbox.editor.withView((view) => view.state.selection.from);
+    void saveImmediate(inbox.entry.path, snapshot).then(() => {
+      showToast(`已采集到「${project.name}」的采集区`, {
+        label: "查看",
+        onClick: () => {
+          void (async () => {
+            if (session.mode !== "project" || session.currentProject?.path !== project.path) {
+              await openProject(project);
+            }
+            structuredInbox.setFilter(null);
+            selectView("inbox");
+            structuredInbox.editor.setSelection(selection);
+            structuredInbox.editor.focus();
+            structuredInbox.editor.withView((view) => view.dispatch(view.state.tr.scrollIntoView()));
+          })().catch(() => showToast("无法打开采集区"));
+        },
+      });
+    }).catch(() => showToast("采集内容保存失败，请检查文件状态"));
+  });
   await listen("window-shortcuts-changed", () => { void loadShortcuts(); });
 
 }

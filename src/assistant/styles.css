@@ -105,17 +105,18 @@
   color: var(--color-text-muted);
   cursor: pointer;
 }
-.assistant-starters { display: grid; gap: 4px; }
+.assistant-starters { display: grid; gap: 8px; }
 .assistant-starters button {
   display: flex;
   align-items: center;
   gap: 8px;
   min-height: 38px;
   padding: 8px 10px;
-  border: 0;
+  border: var(--fn-border-hair) solid var(--color-border);
   border-radius: var(--radius-md);
-  background: transparent;
-  color: var(--color-text-muted);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-sm);
+  color: var(--color-text);
   font-size: var(--fs-base);
   line-height: 1.5;
   text-align: left;
@@ -123,7 +124,7 @@
   transition: background 150ms ease, color 150ms ease;
 }
 .assistant-starters button i { flex: 0 0 auto; font-size: 16px; }
-.assistant-starters button:hover, .assistant-starters button:focus-visible,
+.assistant-starters button:hover, .assistant-starters button:focus-visible { background: var(--color-surface-2); color: var(--color-text); }
 .assistant-suggestions-close:hover { background: var(--color-hover); color: var(--color-text); }
 .assistant-suggestions.is-appearing .assistant-starters button {
   animation: starter-appear 200ms ease both;

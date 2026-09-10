@@ -1,16 +1,8 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { undo } from "@milkdown/kit/prose/history";
 import { createStructuredMarkdownEditor, type StructuredMarkdownEditor } from "../shared/markdown/structured-editor";
 import { annotationsFromMarks, applyMetadataMarks, applyQuoteSources, createStructuredInbox, quoteSourcesFromNodes } from "./structured-inbox";
-
-const eventListeners = vi.hoisted(() => new Map<string, (event: { payload: unknown }) => void>());
-vi.mock("@tauri-apps/api/event", () => ({
-  listen: vi.fn(async (name: string, listener: (event: { payload: unknown }) => void) => {
-    eventListeners.set(name, listener);
-    return () => eventListeners.delete(name);
-  }),
-}));
 
 if (!Range.prototype.getClientRects) {
   Object.defineProperty(Range.prototype, "getClientRects", { value: () => [] });
@@ -245,16 +237,32 @@ describe("structured inbox annotation bridge", () => {
       });
       editor!.setSelection(afterFirst);
     });
-    eventListeners.get("quote-captured")?.({
-      payload: {
-        text: "captured",
-        html: null,
-        source: { kind: "app", title: "终端", url: null, bundleId: "com.apple.Terminal" },
-      },
+    inbox.capture({
+      text: "captured",
+      html: null,
+      source: { kind: "app", title: "终端", url: null, bundleId: "com.apple.Terminal" },
     });
     const markdown = editor.getMarkdown();
     expect(markdown.indexOf("[!quote]")).toBeGreaterThan(markdown.indexOf("first"));
     expect(markdown.indexOf("[!quote]")).toBeLessThan(markdown.indexOf("second"));
     expect(parent.querySelector(".fn-quote-card__source")?.textContent).toBe("终端");
   });
+
+  it("captures without stealing writing focus and rejects read-only inboxes", async () => {
+    const parent = document.createElement("div");
+    const projectionRoot = document.createElement("div");
+    const writing = document.createElement("textarea");
+    document.body.append(parent, projectionRoot, writing);
+    const inbox = await createStructuredInbox({ parent, projectionRoot, onSave: () => undefined });
+    editor = inbox.editor;
+    writing.focus();
+    const payload = { text: "material", html: null, source: null };
+    expect(inbox.capture(payload, false)).toBe(true);
+    expect(document.activeElement).toBe(writing);
+    const snapshot = inbox.snapshot();
+    inbox.setReadOnly(true);
+    expect(inbox.capture(payload, false)).toBe(false);
+    expect(inbox.snapshot()).toBe(snapshot);
+  });
+
 });
