@@ -145,3 +145,13 @@ token，内容卡片只消费 settings component token，不直接读取 primiti
 ## 跨平台注记
 
 `-apple-system`/`SF Pro Text` 在 Windows 降级为 `system-ui`（可接受）；0.5px 发丝边在非 retina Windows 可能渲染为 1px；focus 环（outline + box-shadow 组合）在 Windows Chromium 可能更重。改到这些区域时须在 macOS 与 Windows 各验证一遍（见 `docs/development/cross-platform.md`）。
+
+## 助手提问建议
+
+空对话建议由 `src/assistant/starters.ts` 提供三个透明操作行，无标题、外框、描边和阴影，
+独立放在 dock 上方，与输入区域对齐；floating 和 inline 使用同一结构。hover 与键盘
+focus 显示中性底色。右上角 × 打开共享菜单：“本次隐藏”仅对当前对话生效，新建对话时恢复，
+“不再自动显示”保存本机 localStorage 偏好，跨重启生效，不影响 AI 配置和已有输入。
+关闭不留下折叠入口；新建对话重置临时隐藏并重新播放入场动画，普通刷新或布局切换不恢复已隐藏的建议。
+首次展示时三个操作行分别以 200ms 淡入并上移 6px，依次错开 40ms；退出整组
+120ms 淡出，输入框不移动。减少动态效果时取消动画。

@@ -81,11 +81,60 @@
 .assistant-empty > i { color: var(--color-accent); font-size: 22px; }
 .assistant-empty h2 { margin: 8px 0 4px; font-size: 15px; }
 .assistant-empty p { margin: 0 0 14px; color: var(--color-text-muted); font-size: 12px; line-height: 1.55; }
-.assistant-starters-toggle { width: 100%; min-height: 32px; border: 0; background: transparent; color: var(--color-text); font-weight: 600; text-align: left; cursor: pointer; }
-.assistant-starters { display: grid; gap: 7px; margin-top: 8px; }
-.assistant-starters button { min-height: 38px; padding: 8px 10px; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface-2); color: var(--color-text); text-align: left; cursor: pointer; }
-.assistant-starters button:hover { border-color: var(--color-border-strong); background: var(--color-hover); }
-.assistant-starters .assistant-starters-collapse { min-height: 30px; border-color: transparent; background: transparent; color: var(--color-text-muted); }
+/* Suggestions belong to the dock, outside the message scrollport. */
+.assistant-suggestions {
+  position: relative;
+  flex: 0 0 auto;
+  align-self: stretch;
+  margin: 0 14px 2px 70px;
+  padding: 28px 0 0;
+  pointer-events: auto;
+}
+.assistant-suggestions[hidden], .assistant:not(.expanded) .assistant-suggestions { display: none; }
+.assistant-suggestions-close {
+  position: absolute;
+  right: 0;
+  top: 0;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+.assistant-starters { display: grid; gap: 4px; }
+.assistant-starters button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-text-muted);
+  font-size: var(--fs-base);
+  line-height: 1.5;
+  text-align: left;
+  cursor: pointer;
+  transition: background 150ms ease, color 150ms ease;
+}
+.assistant-starters button i { flex: 0 0 auto; font-size: 16px; }
+.assistant-starters button:hover, .assistant-starters button:focus-visible,
+.assistant-suggestions-close:hover { background: var(--color-hover); color: var(--color-text); }
+.assistant-suggestions.is-appearing .assistant-starters button {
+  animation: starter-appear 200ms ease both;
+  animation-delay: var(--starter-delay);
+}
+.assistant-suggestions.is-leaving { opacity: 0; transition: opacity 120ms ease; pointer-events: none; }
+@keyframes starter-appear { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+@media (prefers-reduced-motion: reduce) {
+  .assistant-suggestions.is-appearing .assistant-starters button { animation: none; }
+  .assistant-suggestions.is-leaving { transition: none; }
+}
 
 .assistant-scroll-bottom {
   position: absolute;

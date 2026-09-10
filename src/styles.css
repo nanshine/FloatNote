@@ -1765,3 +1765,8 @@ body {
 
 .onboarding-coach[data-arrow="right"]::before { left: auto; right: -8px; top: calc(var(--onboarding-arrow-top) - 7px); transform: rotate(135deg); }
 .onboarding-coach[data-arrow="left"]::before { left: -8px; top: calc(var(--onboarding-arrow-top) - 7px); transform: rotate(-45deg); }
+
+#app.mode-floating #assistant-region .assistant-suggestions {
+  width: min(240px, calc(100vw - 96px));
+  align-self: flex-start;
+}

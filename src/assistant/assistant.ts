@@ -19,6 +19,7 @@ import {
   reduceEvents,
 } from "./render";
 import { beginUserMessageEdit, reconcileMessages } from "./blocks";
+import { createStarters } from "./starters";
 import { createButton } from "../shared/ui/button";
 import { showToast } from "../shared/toast";
 import type { AiReadiness } from "../platform/ai-readiness";
@@ -115,7 +116,6 @@ export function mountAssistant(root: HTMLElement, deps: AssistantDeps): Assistan
   let destroyed = false;
   const displayReadiness = () => readinessPreview ?? readiness;
   const setupVisible = () => displayReadiness()?.status !== "ready" && !setupDismissed;
-  let suggestionsExpanded = true;
   let composerEmpty = true;
 
   root.classList.add("assistant");
@@ -190,13 +190,20 @@ export function mountAssistant(root: HTMLElement, deps: AssistantDeps): Assistan
   scroll.addEventListener("scroll", updateBottomFollowing, { passive: true });
   scrollBottomBtn.addEventListener("click", resumeBottomFollowing);
 
+  const suggestions = createStarters([
+    () => composer.openFileStarter(),
+    () => composer.openSkillPicker(),
+    () => composer.fillStarter("请先不要给结论，通过追问帮我想清楚这个问题："),
+  ], () => composer.focus());
+  root.insertBefore(suggestions.el, root.querySelector(".assistant-dock"));
+
   function rerender() {
     // 定向增量更新：已完成消息/块节点复用，不重放进场动画 → 消灭闪烁。
     reconcileMessages(scroll, state.messages, msgMap, outputMode, followingBottom);
     scroll.querySelector(".assistant-empty")?.remove();
     const hasMessages = state.messages.length > 0;
     if (setupVisible()) scroll.append(renderEmptyAssistant());
-    else if (!hasMessages && composerEmpty && displayReadiness()?.status === "ready") scroll.append(renderEmptyAssistant());
+    suggestions.update(!hasMessages && composerEmpty && displayReadiness()?.status === "ready");
     const closesSetup = setupVisible() && !hasMessages;
     newBtn.setAttribute("aria-label", closesSetup ? "关闭配置提示" : "新对话");
     newBtn.title = closesSetup ? "关闭配置提示" : "新对话";
@@ -261,29 +268,7 @@ export function mountAssistant(root: HTMLElement, deps: AssistantDeps): Assistan
       else if (setupNotice) addAction("重试", refreshReadiness);
       return empty;
     }
-    const heading = document.createElement("button");
-    heading.type = "button";
-    heading.className = "assistant-starters-toggle";
-    heading.textContent = suggestionsExpanded ? "试试这样开始" : "查看提问建议";
-    heading.setAttribute("aria-expanded", String(suggestionsExpanded));
-    heading.onclick = () => { suggestionsExpanded = !suggestionsExpanded; rerender(); };
-    empty.append(heading);
-    if (!suggestionsExpanded) return empty;
-    const starters = document.createElement("div");
-    starters.className = "assistant-starters";
-    const add = (label: string, action: () => void) => {
-      const item = document.createElement("button");
-      item.type = "button";
-      item.textContent = label;
-      item.onclick = action;
-      starters.append(item);
-    };
-    add("结合项目资料梳理观点", () => composer.openFileStarter());
-    add("使用一个 AI 技能", () => composer.openSkillPicker());
-    add("用追问帮我想清楚", () => composer.fillStarter("请先不要给结论，通过追问帮我想清楚这个问题："));
-    const collapse = buttonForCollapse();
-    starters.append(collapse);
-    empty.append(starters);
+
     return empty;
   }
 
@@ -321,15 +306,6 @@ export function mountAssistant(root: HTMLElement, deps: AssistantDeps): Assistan
     return false;
   }
 
-  function buttonForCollapse(): HTMLButtonElement {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "assistant-starters-collapse";
-    button.textContent = "收起建议";
-    button.onclick = () => { suggestionsExpanded = false; rerender(); };
-    return button;
-  }
-
   function dispatch(event: ChatEvent) {
     state = reduceEvents(state, event);
     rerender();
@@ -341,7 +317,6 @@ export function mountAssistant(root: HTMLElement, deps: AssistantDeps): Assistan
     root.dataset.conversationId = conversation?.id ?? "";
     if (!conversation) return;
     if (clearMessages) resumeBottomFollowing();
-    if (clearMessages) suggestionsExpanded = true;
     state = clearMessages
       ? { activeConversationId: conversation.id, messages: [] }
       : { ...state, activeConversationId: conversation.id };
@@ -539,7 +514,7 @@ export function mountAssistant(root: HTMLElement, deps: AssistantDeps): Assistan
     closeHistoryPopover();
     setActiveConversation(null);
     state = emptyChat();
-    suggestionsExpanded = true;
+    suggestions.resetForNewConversation();
     setupDismissed = false;
     rerender();
     setInputOpen(true);
@@ -844,6 +819,7 @@ export function mountAssistant(root: HTMLElement, deps: AssistantDeps): Assistan
       outputModeUnlisten?.();
       permUnlisten?.();
       permBubble.destroy();
+      suggestions.destroy();
       composer.destroy();
       document.removeEventListener("pointerdown", onDocumentPointerDown);
       root.classList.remove("assistant");
@@ -856,7 +832,6 @@ export function mountAssistant(root: HTMLElement, deps: AssistantDeps): Assistan
       closeHistoryPopover();
       resumeBottomFollowing();
       state = emptyChat();
-      suggestionsExpanded = true;
       rerender();
       const token = ++scopeToken;
       if (!scope) return;
