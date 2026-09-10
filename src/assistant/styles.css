@@ -892,7 +892,8 @@
   gap: 8px;
   max-width: 0;
   opacity: 0;
-  overflow: hidden;
+  /* Clip the reveal without creating a focus-scrollable outer container. */
+  overflow: clip;
   transform: translateX(-8px);
   transition:
     max-width 0.34s cubic-bezier(0.22, 1, 0.36, 1),

@@ -45,6 +45,30 @@ async function mountWithDeps(overrides: Partial<AssistantDeps> = {}) {
 describe("assistant message actions", () => {
   afterEach(() => document.body.replaceChildren());
 
+  it("waits for the reveal to finish before focusing and cancels focus when closed", async () => {
+    const { root, handle } = await mountWithDeps();
+    await vi.waitFor(() => expect(root.querySelector(".editor")).not.toBeNull());
+    const wrap = root.querySelector<HTMLElement>(".assistant-input-wrap")!;
+    const content = root.querySelector<HTMLElement>(".editor")!;
+    handle.setInputOpen(false);
+    let finish!: () => void;
+    const getAnimations = vi.fn(() => [{ finished: new Promise<void>((resolve) => { finish = resolve; }) }]);
+    Object.defineProperty(wrap, "getAnimations", { value: getAnimations });
+    handle.setInputOpen(true);
+    await vi.waitFor(() => expect(getAnimations).toHaveBeenCalledOnce());
+    expect(document.activeElement).not.toBe(content);
+    finish();
+    await vi.waitFor(() => expect(document.activeElement).toBe(content));
+    handle.setInputOpen(false);
+    handle.setInputOpen(true);
+    await vi.waitFor(() => expect(getAnimations).toHaveBeenCalledTimes(2));
+    handle.setInputOpen(false);
+    finish();
+    await Promise.resolve();
+    expect(document.activeElement).not.toBe(content);
+    handle.destroy();
+  });
+
   it("shows provider setup in an unconfigured empty conversation", async () => {
     const { root } = await mountWithDeps({ getReadiness: async () => ({ status: "unconfigured" }) });
     await vi.waitFor(() => expect(root.querySelector(".assistant-empty")?.textContent).toContain("配置 AI 服务"));

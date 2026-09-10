@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 
 interface InputChrome {
+  bottomOffset: number;
   backgroundColor: string;
   borderColor: string;
   borderRadius: string;
@@ -18,6 +19,7 @@ async function inputChrome(): Promise<InputChrome> {
     const style = getComputedStyle(editor);
     const rect = editor.getBoundingClientRect();
     return {
+      bottomOffset: rect.bottom - document.querySelector(".assistant-send")!.getBoundingClientRect().bottom,
       backgroundColor: style.backgroundColor,
       borderColor: style.borderTopColor,
       borderRadius: style.borderRadius,
@@ -31,6 +33,7 @@ async function inputChrome(): Promise<InputChrome> {
 }
 
 function assertVisibleChrome(chrome: InputChrome) {
+  assert.ok(Math.abs(chrome.bottomOffset) <= 1, `input bottom is displaced by ${chrome.bottomOffset}px`);
   assert.equal(chrome.borderStyle, "solid");
   assert.equal(chrome.borderRadius, "18px");
   assert.notEqual(chrome.backgroundColor, "rgba(0, 0, 0, 0)");
@@ -61,22 +64,30 @@ describe("assistant input browser review", () => {
     await browser.waitUntil(() => browser.execute(() => (
       document.querySelector(".fn-assistant-structured-editor")?.contains(document.activeElement) ?? false
     )));
+    await content.setValue("你好");
     const focused = await inputChrome();
     assertVisibleChrome(focused);
     assert.equal(focused.boxShadow, "none");
     assert.equal(focused.borderColor, "rgb(79, 70, 229)");
 
-    await $("#review-stage").click({ x: 4, y: 4 });
+    await browser.keys("Tab");
     await browser.waitUntil(() => browser.execute(() => !(
       document.querySelector(".fn-assistant-structured-editor")?.contains(document.activeElement) ?? false
     )));
     assertVisibleChrome(await inputChrome());
 
-    await bot.click();
-    await browser.waitUntil(() => wrap.getAttribute("class").then((value) => !value.includes("open")));
-    await bot.click();
-    await browser.waitUntil(() => wrap.getAttribute("class").then((value) => value.includes("open")));
-    assertVisibleChrome(await inputChrome());
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      await bot.click();
+      await browser.waitUntil(() => wrap.getAttribute("class").then((value) => !value.includes("open")));
+      await bot.click();
+      await browser.waitUntil(() => browser.execute(() => {
+        const wrap = document.querySelector(".assistant-input-wrap")!;
+        return wrap.classList.contains("open") && wrap.getAnimations().length === 0
+          && Boolean(document.querySelector(".editor")?.contains(document.activeElement));
+      }));
+      assertVisibleChrome(await inputChrome());
+      assert.equal(await content.getText(), "你好");
+    }
   });
 });
 

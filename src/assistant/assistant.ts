@@ -368,6 +368,8 @@ export function mountAssistant(root: HTMLElement, deps: AssistantDeps): Assistan
   }
 
   let inputOpen = false;
+  let inputFocusRevision = 0;
+  inputWrap.addEventListener("focusin", () => { inputFocusRevision += 1; });
   let activeRequestId: string | null = null;
   function setInputOpen(open: boolean) {
     if (open && !inputOpen) void refreshReadiness();
@@ -379,8 +381,18 @@ export function mountAssistant(root: HTMLElement, deps: AssistantDeps): Assistan
     bot.classList.remove("nudge");
     void bot.offsetWidth; // 强制重排以重启动画
     bot.classList.add("nudge");
-    if (open) setTimeout(() => composer.focus(), 160);
-    else (document.activeElement instanceof HTMLElement ? document.activeElement : null)?.blur();
+    const focusRevision = ++inputFocusRevision;
+    if (open) {
+      requestAnimationFrame(() => {
+        if (destroyed || !inputOpen || focusRevision !== inputFocusRevision) return;
+        // Focusing while the flex item is expanding can scroll its clipped
+        // ancestors and leave WebKit with a displaced composer after reopening.
+        const transitions = inputWrap.getAnimations?.() ?? [];
+        void Promise.all(transitions.map((animation) => animation.finished.catch(() => {}))).then(() => {
+          if (!destroyed && inputOpen && focusRevision === inputFocusRevision) composer.focus();
+        });
+      });
+    } else (document.activeElement instanceof HTMLElement ? document.activeElement : null)?.blur();
     if (!open) closeHistoryPopover();
   }
 
@@ -667,6 +679,7 @@ export function mountAssistant(root: HTMLElement, deps: AssistantDeps): Assistan
   });
 
   function onDocumentPointerDown(e: PointerEvent) {
+    if (e.target instanceof Node && !bot.contains(e.target)) inputFocusRevision += 1;
     if (historyPopover.hidden) return;
     const target = e.target;
     if (target instanceof Node && root.contains(target)) return;
