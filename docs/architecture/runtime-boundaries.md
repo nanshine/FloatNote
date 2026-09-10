@@ -23,3 +23,11 @@ Skill 目录由 Rust 授权并形成 prompt-boundary snapshot。Rust 生成 `<av
 ## 图片与外部链接
 
 图片通过自定义 `floatnote-img://` 协议读取，Rust 仅允许 `_assets` 下的已知图片后缀。外部链接由 Rust `open_url` 再次校验，只允许 `http`、`https`、`mailto`。CSP 明确允许 Tauri IPC、资源字体和自定义图片协议，避免 WebView 处于无策略状态。
+
+## 外部选区
+
+输入监听 → 事件 epoch/目标/释放位置快照 → `selection_worker` 最新请求槽 →
+AX（macOS）或独立 MTA UIA（Windows）→ 必要的剪贴板兜底 → 来源查询 →
+再次校验 epoch/目标 → popup generation 缓存。输入线程不等待取词，COM 对象不跨线程。
+自动 AX/UIA 成功不触碰剪贴板；确认采集时仅为仍匹配的原选区补齐 HTML，异步完成后
+重新校验 generation，失败则使用缓存纯文本。快捷键采集继续保留富文本。

@@ -70,3 +70,17 @@ npm run release:check -- --tag v0.2.0
 当前自动化覆盖 Windows 风格反斜杠与盘符绝对路径拒绝、路径大小写/文件名规则、CRLF clean Markdown 搜索、Pi session 导入，以及 create-only/同名竞态。macOS 上的完整 Rust 和浏览器 UI 门禁通过不代表 Windows 原生 UI 已验证。
 
 Windows 发布前仍需人工复核：project picker 与 active-note 路径、Skill 目录 realpath、审批弹窗、piece create/rewrite/snapshot、外部编辑造成的 stale commit、watcher 自写抑制，以及五个 Provider 的流式请求。
+
+## 外部选区回归
+
+Rust 回归覆盖停止早于事件循环启动、真实 CFRunLoop pass 入口竞态（无需辅助功能授权）、
+取词未完成时新输入失效、最新请求替换、停止丢弃待处理请求、拖动中的光标证据节流与清空、
+Shift+Click、自动 AX 成功不调用剪贴板、UIA 对象占位符清理，以及 HTML 补齐的 generation 边界。
+
+原生验收需分别覆盖：Chrome/Safari/TextEdit 的快速进入文字拖选、段落边缘拖选、双击、
+Shift+Click、标题栏/滚动条拖动、连续划选后立即点击/输入、快速切换监听模式；自动浮条
+出现时剪贴板应不变，点击采集应保留匹配的富文本或安全回退为原缓存纯文本。
+Windows 另需验证 Chromium 的 tabindex 容器选区、终端复制、UIA 不响应时监听仍正常、
+多窗口同 PID 切换及跨缩放屏定位；无选区时不能返回整页文档。
+完整 Windows 构建需要 Windows SDK（包括 `windows.h`），macOS 上的 UIA 模块目标编译
+不能代替完整 Windows 构建或实机手势验收。

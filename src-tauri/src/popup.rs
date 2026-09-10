@@ -17,6 +17,7 @@ struct PopupSession {
     generation_id: u64,
     capture: Option<CachedCapture>,
     interactive: bool,
+    deferred_target: Option<crate::source::ForegroundTarget>,
 }
 
 #[derive(Clone, serde::Serialize)]
@@ -50,8 +51,28 @@ impl PopupCache {
             generation_id,
             capture: Some(CachedCapture { text, html, source }),
             interactive: false,
+            deferred_target: None,
         });
         generation_id
+    }
+
+    fn set_deferred_target(&self, generation: u64, target: crate::source::ForegroundTarget) {
+        let mut slot = self.session.lock().unwrap();
+        if let Some(session) = slot
+            .as_mut()
+            .filter(|session| session.generation_id == generation)
+        {
+            session.deferred_target = Some(target);
+        }
+    }
+
+    fn deferred_target(&self, generation: u64) -> Option<crate::source::ForegroundTarget> {
+        self.session
+            .lock()
+            .unwrap()
+            .as_ref()
+            .filter(|session| session.generation_id == generation)?
+            .deferred_target
     }
 
     pub fn begin_empty(&self) -> u64 {
@@ -60,6 +81,7 @@ impl PopupCache {
             generation_id,
             capture: None,
             interactive: false,
+            deferred_target: None,
         });
         generation_id
     }
@@ -97,7 +119,7 @@ impl PopupCache {
         true
     }
 
-    #[cfg(any(target_os = "macos", test))]
+    #[cfg(any(target_os = "macos", target_os = "windows", test))]
     pub fn is_interactive(&self) -> bool {
         self.session
             .lock()
@@ -272,18 +294,37 @@ fn should_emit(origin: PopupOrigin, has_text: bool, external_frontmost: bool) ->
 /// User clicked 「加入采集区」: forward the cached {text, html, source} to the
 /// note window exactly as the direct-capture path does.
 #[tauri::command]
-pub fn submit_popup_capture(
+pub async fn submit_popup_capture(
     generation_id: u64,
-    state: State<AppState>,
+    state: State<'_, AppState>,
     app: AppHandle,
 ) -> Result<(), String> {
+    let extra_html = if let (Some(target), Some(capture)) = (
+        state.popup_cache.deferred_target(generation_id),
+        state.popup_cache.snapshot(generation_id),
+    ) {
+        if capture.html.is_none() {
+            let app = app.clone();
+            tauri::async_runtime::spawn_blocking(move || {
+                crate::capture::deferred_html(&app, target, &capture.text)
+            })
+            .await
+            .ok()
+            .flatten()
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+    // Re-check generation after asynchronous enrichment before consuming anything.
     let (text, html, source) = match state.popup_cache.take(generation_id) {
         Some((t, h, s)) if !t.trim().is_empty() => (t, h, s),
         _ => return Err("选区已失效或没有可加入的文本".to_string()),
     };
     let payload = crate::source::QuotePayload {
         text: text.trim().to_string(),
-        html,
+        html: html.or(extra_html),
         source,
     };
     app.emit_to("main", "quote-captured", payload)
@@ -316,29 +357,26 @@ pub fn dismiss_popup(
 /// Global shortcut entry: eagerly capture the selection while the source app
 /// is still focused, cache it, then tell the popup window to show at the cursor.
 pub fn run_popup_capture(app: &AppHandle) {
-    run_popup_capture_with_origin(app, PopupOrigin::Shortcut, None, None);
+    crate::selection_worker::invalidate();
+    run_popup_capture_with_origin(app, PopupOrigin::Shortcut, None);
 }
 
-#[cfg(target_os = "macos")]
-pub fn run_auto_popup_capture(app: &AppHandle, selection_event: u64) {
-    run_popup_capture_with_origin(app, PopupOrigin::Auto, Some(selection_event), None);
-}
-
-#[cfg(target_os = "windows")]
-pub fn run_windows_auto_popup_capture(app: &AppHandle, target: crate::source::ForegroundTarget) {
-    run_popup_capture_with_origin(app, PopupOrigin::Auto, None, Some(target));
+pub fn run_auto_popup_capture(app: &AppHandle, request: crate::selection_worker::Request) {
+    run_popup_capture_with_origin(app, PopupOrigin::Auto, Some(request));
 }
 
 fn run_popup_capture_with_origin(
     app: &AppHandle,
     origin: PopupOrigin,
-    selection_event: Option<u64>,
-    expected_target: Option<crate::source::ForegroundTarget>,
+    automatic: Option<crate::selection_worker::Request>,
 ) {
     // FloatNote never captures from its own windows. Check before the
     // accessibility prompt so the global popup shortcut is a silent no-op
     // while any FloatNote window is frontmost.
-    let Some(target) = expected_target.or_else(crate::capture::external_frontmost_target) else {
+    let Some(target) = automatic
+        .map(|request| request.target)
+        .or_else(crate::capture::external_frontmost_target)
+    else {
         return;
     };
     if target.pid == std::process::id() as i32 || crate::source::foreground_target() != Some(target)
@@ -353,24 +391,20 @@ fn run_popup_capture_with_origin(
     };
 
     #[cfg(target_os = "macos")]
-    if selection_event.is_some()
-        && !macos_accessibility_client::accessibility::application_is_trusted()
-    {
+    if automatic.is_some() && !macos_accessibility_client::accessibility::application_is_trusted() {
         return;
     }
     if !crate::capture::check_accessibility(app) {
         return;
     }
 
-    let captured = crate::capture::capture_current_selection_for_target(app, target);
-    #[cfg(target_os = "macos")]
-    if selection_event
-        .is_some_and(|event| !crate::selection_monitor::is_current_selection_event(event))
-    {
+    if automatic.is_some_and(|request| !request.is_current()) {
         return;
     }
-    #[cfg(not(target_os = "macos"))]
-    let _ = selection_event;
+    let captured = crate::capture::capture_selection(app, target, automatic);
+    if automatic.is_some_and(|request| !request.is_current()) {
+        return;
+    }
     let has_text = captured.is_some();
     if !should_emit(
         origin,
@@ -382,7 +416,16 @@ fn run_popup_capture_with_origin(
     let generation_id = if let Some(ref c) = captured {
         // Source app is still frontmost here (popup window is shown only below).
         let source = crate::source::capture_source_for_pid(app, c.source_pid);
-        state_set(app, c.text.clone(), c.html.clone(), source).unwrap_or(0)
+        if automatic.is_some_and(|request| !request.is_current()) {
+            return;
+        }
+        let generation = state_set(app, c.text.clone(), c.html.clone(), source).unwrap_or(0);
+        if automatic.is_some() && c.html.is_none() {
+            if let Some(state) = app.try_state::<AppState>() {
+                state.popup_cache.set_deferred_target(generation, target);
+            }
+        }
+        generation
     } else {
         state_begin_empty(app).unwrap_or(0)
     };
@@ -390,7 +433,16 @@ fn run_popup_capture_with_origin(
         return;
     }
 
-    let (x, y) = crate::cursor::get_cursor_pos(app).unwrap_or((0.0, 0.0));
+    if automatic.is_some_and(|request| !request.is_current()) {
+        if let Some(state) = app.try_state::<AppState>() {
+            state.popup_cache.clear_if(generation_id);
+        }
+        return;
+    }
+    let (x, y) = automatic
+        .map(|request| request.anchor)
+        .or_else(|| crate::cursor::get_cursor_pos(app))
+        .unwrap_or((0.0, 0.0));
 
     let payload = PopupPayload {
         x,
@@ -440,14 +492,14 @@ fn hide_popup(app: &AppHandle) {
     }
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 pub fn is_visible(app: &AppHandle) -> bool {
     app.get_webview_window("selection-popup")
         .and_then(|popup| popup.is_visible().ok())
         .unwrap_or(false)
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 pub fn is_interactive(app: &AppHandle) -> bool {
     app.try_state::<AppState>()
         .is_some_and(|state| state.popup_cache.is_interactive())
@@ -456,6 +508,23 @@ pub fn is_interactive(app: &AppHandle) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn deferred_target_cannot_be_attached_to_or_read_from_a_new_generation() {
+        let cache = PopupCache::new();
+        let old = cache.set("old".into(), None, None);
+        let target = crate::source::ForegroundTarget {
+            pid: 42,
+            window_id: None,
+        };
+        cache.set_deferred_target(old, target);
+        let current = cache.set("new".into(), None, None);
+        cache.set_deferred_target(old, target);
+        assert!(cache.deferred_target(old).is_none());
+        assert!(cache.deferred_target(current).is_none());
+        assert!(cache.take(old).is_none());
+        assert_eq!(cache.take(current).unwrap().0, "new");
+    }
 
     #[test]
     fn take_returns_none_when_empty() {

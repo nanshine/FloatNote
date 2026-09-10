@@ -13,6 +13,7 @@ mod project;
 mod selection_intent;
 mod selection_monitor;
 mod selection_probe;
+mod selection_worker;
 mod shortcuts;
 mod source;
 mod state;

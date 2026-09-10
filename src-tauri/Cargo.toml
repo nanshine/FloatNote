@@ -47,11 +47,12 @@ macos-accessibility-client = "0.0.1"
 core-graphics = { version = "0.25", features = ["elcapitan"] }
 objc2 = "0.5"
 objc2-foundation = { version = "0.2", features = ["NSArray", "NSString", "NSData", "NSURL"] }
-objc2-app-kit = { version = "0.2", features = ["NSWorkspace", "NSRunningApplication", "NSImage", "NSPasteboard", "NSPasteboardItem", "libc"] }
+objc2-app-kit = { version = "0.2", features = ["NSWorkspace", "NSRunningApplication", "NSImage", "NSPasteboard", "NSPasteboardItem", "NSCursor", "libc"] }
 image = { version = "0.25", default-features = false, features = ["tiff", "png"] }
 plist = "1.9"
 
 [target.'cfg(target_os = "windows")'.dependencies]
+windows = { version = "0.61.3", features = ["Win32_System_Com", "Win32_UI_Accessibility"] }
 windows-sys = { version = "0.61", features = [
   "Win32_Foundation",
   "Win32_Graphics_Dwm",

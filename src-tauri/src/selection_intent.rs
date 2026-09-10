@@ -1,5 +1,37 @@
 pub const DRAG_THRESHOLD: f64 = 5.0;
 
+/// Event-thread-only cursor evidence. Never sample every mouse movement.
+#[cfg(any(target_os = "macos", test))]
+#[derive(Clone, Copy, Default)]
+pub struct DragEvidence {
+    active: bool,
+    saw_text: bool,
+    last_sample_ms: u64,
+}
+
+#[cfg(any(target_os = "macos", test))]
+impl DragEvidence {
+    pub fn begin(&mut self, at: u64, text: bool) {
+        *self = Self {
+            active: true,
+            saw_text: text,
+            last_sample_ms: at,
+        };
+    }
+    pub fn should_sample(&self, at: u64) -> bool {
+        self.active && !self.saw_text && at.saturating_sub(self.last_sample_ms) >= 50
+    }
+    pub fn sample(&mut self, at: u64, text: bool) {
+        self.last_sample_ms = at;
+        self.saw_text |= text;
+    }
+    pub fn finish(&mut self, text: bool) -> bool {
+        let result = self.active && (self.saw_text || text);
+        *self = Self::default();
+        result
+    }
+}
+
 #[cfg(any(target_os = "macos", test))]
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Point {
@@ -9,6 +41,7 @@ pub struct Point {
 
 #[cfg(any(target_os = "macos", test))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[allow(dead_code)] // AX role vocabulary is also used by platform regression fixtures.
 pub enum AxTargetKind {
     Text,
     TextArea,
@@ -43,6 +76,7 @@ pub struct MouseDown {
 #[cfg(any(target_os = "macos", test))]
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct MouseUp {
+    pub shift: bool,
     pub event_number: u64,
     pub pid: i32,
     pub point: Point,
@@ -84,7 +118,7 @@ impl SelectionIntentTracker {
         let distance = ((event.point.x - down.point.x).powi(2)
             + (event.point.y - down.point.y).powi(2))
         .sqrt();
-        if distance < DRAG_THRESHOLD && event.click_count < 2 {
+        if distance < DRAG_THRESHOLD && event.click_count < 2 && !event.shift {
             return None;
         }
 
@@ -114,11 +148,26 @@ mod tests {
 
     fn up(x: f64, click_count: u8) -> MouseUp {
         MouseUp {
+            shift: false,
             event_number: 7,
             pid: 42,
             point: Point { x, y: 20.0 },
             click_count,
         }
+    }
+
+    #[test]
+    fn mid_drag_cursor_evidence_is_throttled_and_does_not_leak() {
+        let mut evidence = DragEvidence::default();
+        assert!(!evidence.finish(true));
+        evidence.begin(100, false);
+        assert!(!evidence.should_sample(149));
+        assert!(evidence.should_sample(150));
+        evidence.sample(150, true);
+        assert!(!evidence.should_sample(200));
+        assert!(evidence.finish(false));
+        evidence.begin(300, false);
+        assert!(!evidence.finish(false));
     }
 
     #[test]
@@ -136,6 +185,15 @@ mod tests {
         assert_eq!(candidate.event_number, 7);
         assert_eq!(candidate.pid, 42);
         assert_eq!(candidate.click_count, 1);
+    }
+
+    #[test]
+    fn shift_click_preserves_the_real_click_count() {
+        let mut tracker = SelectionIntentTracker::default();
+        tracker.on_mouse_down(down(AxTargetKind::Text));
+        let mut release = up(10.0, 1);
+        release.shift = true;
+        assert_eq!(tracker.on_mouse_up(release).unwrap().click_count, 1);
     }
 
     #[test]

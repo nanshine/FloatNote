@@ -32,9 +32,15 @@ entry that calls `floatnote::run()`.
 - `capture.rs`, `cursor.rs` — external-process-only AX-first selection capture,
   lossless pasteboard fallback, and cursor location. FloatNote's own PID must be
   rejected before AX or pasteboard work begins.
-- `selection_intent.rs`, `selection_probe.rs`, `selection_monitor.rs` — pure
-  mouse-selection state, macOS Accessibility text extraction, and the dedicated
-  listen-only event-tap thread/worker boundary.
+- `selection_intent.rs`, `selection_monitor.rs` — pure gesture/cursor evidence,
+  macOS listen-only event tap and Windows polling input threads. Invalidate
+  retrieval epochs at input time; never perform selection retrieval on these threads.
+- `selection_worker.rs` — bounded automatic capture lifecycle with a single
+  replaceable pending request, fixed release coordinates and stale-result rejection.
+- `selection_probe.rs`, `selection_probe/windows.rs` — bounded macOS AX ancestor
+  lookup and a windowless Windows MTA UIA service; COM interfaces never cross threads.
+  Automatic AX/UIA success must not simulate copy. Popup confirmation may enrich
+  matching cached text with HTML, while always rejecting our own PID as a target.
 - `popup.rs`, `popup_hover.rs`, `shortcuts.rs`, `tray.rs`, `windows.rs`,
   `config.rs` — generation-aware popup cache, macOS passive hover relay, global
   shortcuts, tray menu, window management, and config load/save.

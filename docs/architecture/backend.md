@@ -10,13 +10,21 @@
 - `chat_history.rs`、`paths.rs`、`watcher.rs` 处理聊天记录、跨平台路径与文件变更。
 - `platform.rs` 封装原生系统边界；`reveal_in_file_manager` command 通过它在 macOS
   Finder 或 Windows 文件资源管理器中定位项目文件夹和独立文档。
-- `selection_intent.rs` 是纯鼠标选择状态机；`selection_probe.rs` 通过 macOS
-  Accessibility 从 focused element、children、ancestors 读取文本；
-  `selection_monitor.rs` 在 macOS 的独立 CFRunLoop 上运行 listen-only event tap，
-  Windows 则由可停止的轮询线程识别拖选、双击和 Shift+Click。macOS FFI callback
-  只投递元数据，AX、窗口和剪贴板操作全部在 worker 执行；Windows 候选保存 PID 与
-  HWND，并将同一目标身份传到捕获完成。自动和快捷键弹窗模式都保留监听器以处理
-  外部点击关闭；只有自动模式会把选择手势继续交给捕获流程。
+- `selection_intent.rs` 保存纯手势和光标采样状态；`selection_probe.rs` 通过 macOS
+  Accessibility 从 focused element、children、ancestors 读取文本，检查 CF 类型并限制
+  子节点数量、祖先深度和消息等待。`selection_probe/windows.rs` 的常驻无窗口 MTA
+  服务独占 UIA/COM 对象，仅返回 `TextPattern.GetSelection()` 的文本，最多上溯 10 层，
+  不展开整个文档；调用方最多等待 350ms，迟到结果丢弃。
+- `selection_monitor.rs` 在 macOS 独立 CFRunLoop 上运行 listen-only event tap，
+  Windows 使用可停止的轮询线程；两者只处理输入和窗口交互，将取词交给
+  `selection_worker.rs`，待处理槽只保留最新请求。macOS callback 保存事件时间、PID、
+  修饰键和光标证据，拖动采样间隔至少 50ms，见到文本光标后停止采样；Windows
+  在轮询时保存 PID+HWND，并在前台目标改变时清除手势。新点击/键盘输入在输入阶段
+  更新 epoch；取词、来源查询完成和发布前再次校验，位置固定为鼠标释放时的逻辑坐标。
+  自动和快捷键弹窗模式都保留监听，只有自动模式触发手势取词。
+- macOS 事件循环使用 50ms 有界 pass 和持久停止标志，停止早于首次 pass 也有效，
+  不跨线程保存 CFRunLoop 裸指针。取词 worker 关闭后拒绝新请求，最多等待 300ms；
+  若系统服务仍未返回，线程持有自身数据继续退出，epoch 阻止其结果发布。
 - `popup.rs` 为每次有效捕获分配 `generationId`。提交、关闭和前端 payload
   都携带该代次，过期的异步捕获不能覆盖或关闭更新的弹窗。
 
@@ -33,8 +41,13 @@ session 都保留下来；从未形成持久 session 的空白“新对话”不
 mouse-move event tap，以有界通道和 30Hz 节流向 WebView 转发坐标；它不与
 `selection_monitor.rs` 的 down/up/key 队列共享容量。自动、弹窗快捷键与
 直接采集入口都会在 AX 和剪贴板操作前拒绝 FloatNote 自身 PID，因此本软件
-任意窗口内的划词捕获均静默无效。macOS 外部应用使用 AX-first 捕获并允许定向
-`Cmd+C` 兜底；Windows 剪贴板捕获在复制前后校验相同 PID+HWND，完整枚举并预分配
+任意窗口内的划词捕获均静默无效。macOS 使用 AX-first、Windows 使用 UIA-first；
+自动探测成功只缓存纯文本，不为 HTML 模拟复制，失败时有文本光标证据才允许剪贴板兜底。
+macOS 用户确认采集时才尝试补齐 HTML：重新核对缓存的外部 PID 和选区文本，允许浮条
+已成为 key window 时向原应用定向 `Cmd+C`，不切换焦点；若焦点移到第三方应用、选区变化
+或原应用不响应，则仍提交缓存纯文本。异步补齐后再校验 popup generation。
+快捷键主动采集保留富文本获取。Windows 剪贴板捕获在复制前后校验相同 PID+HWND，
+另行拒绝调用线程拥有的窗口，完整枚举并预分配
 恢复数据，忽略可由 Windows 重建的合成格式并专门复制增强型图元文件。自动失败静默，专用快捷键在外部
 应用无有效选区时仍允许显示短暂的空结果反馈。已缓存的外部选区可在弹窗成为
 前台窗口后正常提交。
