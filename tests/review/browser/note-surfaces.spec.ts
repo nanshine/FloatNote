@@ -114,7 +114,7 @@ describe("note editor surface browser review", () => {
     await browser.waitUntil(() => browser.execute(() => document.body.dataset.reviewReady === "true"));
     const host = "#inbox-host";
 
-    await $(`${host} .fn-quote-card__source`).click();
+    await $(`${host} .fn-quote-card__icon`).click();
     const quoteState = await browser.execute((selector) => {
       const card = document.querySelector<HTMLElement>(`${selector} .fn-quote-card`);
       const editor = card?.querySelector<HTMLElement>(".fn-quote-card__source-editor");
@@ -130,12 +130,13 @@ describe("note editor surface browser review", () => {
     }, host);
     assert.deepEqual(quoteState, {
       selected: true,
-      controlsVisible: true,
+      controlsVisible: false,
       controlsFit: true,
       borderRadius: "8px",
       outlineOffset: "-1px",
       outlineWidth: "1px",
     });
+    await $(`${host} [aria-label="编辑引用来源"]`).click();
     const sourceName = await $(`${host} [aria-label="引用来源名称"]`);
     await sourceName.click();
     const sourceInputState = await browser.execute((element) => {
@@ -147,13 +148,13 @@ describe("note editor surface browser review", () => {
     assert.equal(sourceInputState.outlineStyle, "none");
     await sourceName.setValue("Docs");
     await $(`${host} [aria-label="引用来源链接"]`).setValue("https://docs.example.com");
-    await $(`${host} .fn-quote-card__content`).click();
+    await $(`${host} [aria-label="保存引用来源"]`).click();
     await browser.waitUntil(() => browser.execute((selector) => {
       const card = document.querySelector<HTMLElement>(`${selector} .fn-quote-card`);
       return card?.querySelector(".fn-quote-card__source")?.textContent === "Docs"
         && card.querySelector(".fn-quote-card__content")?.textContent?.includes("captured text");
     }, host));
-    await $(`${host} .fn-quote-card__source`).click();
+    await $(`${host} .fn-quote-card__icon`).click();
     await browser.keys(["Delete"]);
     await browser.waitUntil(() => browser.execute((selector) => !document.querySelector(`${selector} .fn-quote-card`), host));
 

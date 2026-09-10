@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { invoke } from "@tauri-apps/api/core";
+vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn().mockResolvedValue(undefined) }));
 import { createStructuredMarkdownEditor, type StructuredMarkdownEditor } from "./structured-editor";
 
 if (!Range.prototype.getClientRects) {
@@ -208,7 +210,7 @@ describe("structured markdown editor", () => {
     expect(editor.getMarkdown()).not.toContain("[!quote]");
   });
 
-  it("edits and removes quote source details after selecting the card", async () => {
+  it("opens quote sources independently of block selection and explicitly edits details", async () => {
     const parent = document.createElement("div");
     document.body.append(parent);
     editor = await createStructuredMarkdownEditor({
@@ -216,18 +218,43 @@ describe("structured markdown editor", () => {
       context: { kind: "inbox" },
       markdown: "> [!quote] [Browser](https://example.com)\n> captured text",
     });
+    const initialSource = parent.querySelector<HTMLAnchorElement>(".fn-quote-card__source a")!;
+    initialSource.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 }));
+    initialSource.click();
+    editor.withView((view) => expect(view.state.selection.constructor.name).not.toBe("NodeSelection"));
     parent.querySelector<HTMLElement>(".fn-quote-card__header")!
       .dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 }));
     const label = parent.querySelector<HTMLInputElement>('[aria-label="引用来源名称"]')!;
     const url = parent.querySelector<HTMLInputElement>('[aria-label="引用来源链接"]')!;
-    expect(label.hidden).toBe(false);
+    const sourceEditor = parent.querySelector<HTMLElement>(".fn-quote-card__source-editor")!;
+    expect(sourceEditor.hidden).toBe(true);
+    const anchor = parent.querySelector<HTMLAnchorElement>(".fn-quote-card__source a")!;
+    anchor.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 }));
+    anchor.click();
+    expect(invoke).toHaveBeenCalledWith("open_url", { url: "https://example.com" });
+    expect(sourceEditor.hidden).toBe(true);
+    const edit = parent.querySelector<HTMLButtonElement>('[aria-label="编辑引用来源"]')!;
+    edit.click();
+    expect(sourceEditor.hidden).toBe(false);
+    label.value = "Discard";
+    url.value = "https://discard.example.com";
+    label.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    expect(sourceEditor.hidden).toBe(true);
+    expect(editor.getMarkdown()).toContain("[Browser](https://example.com)");
+    edit.click();
+    expect(label.value).toBe("Browser");
     label.value = "Docs";
     url.value = "https://docs.example.com";
-    label.dispatchEvent(new Event("change", { bubbles: true }));
+    label.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
     expect(editor.getMarkdown()).toContain("[Docs](https://docs.example.com)");
+    expect(sourceEditor.hidden).toBe(true);
+    parent.querySelector<HTMLAnchorElement>(".fn-quote-card__source a")!.click();
+    expect(invoke).toHaveBeenLastCalledWith("open_url", { url: "https://docs.example.com" });
     expect(editor.getMarkdown()).toContain("captured text");
     expect(parent.querySelector(".fn-quote-card__content")?.textContent).toContain("captured text");
+    edit.click();
     parent.querySelector<HTMLButtonElement>('[aria-label="移除引用来源"]')!.click();
+    parent.querySelector<HTMLButtonElement>('[aria-label="保存引用来源"]')!.click();
     expect(editor.getMarkdown()).toContain("> [!quote]");
     expect(editor.getMarkdown()).not.toContain("docs.example.com");
     expect(editor.getMarkdown()).toContain("captured text");

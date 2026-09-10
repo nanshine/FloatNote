@@ -17,6 +17,7 @@ FloatNote 使用 Vite 多页面应用：根目录 HTML 是各 WebView 入口。`
   KaTeX 原子节点，表格、任务项、图片属性和引用卡均为可交互结构化节点；只有代码块
   NodeView 内保留隔离的 CodeMirror，并按语言懒加载高亮。
   空文档的 ProseMirror 编辑面铺满所属滚动区，点击正文留白也会把光标定位到空段落；
+  采集引用卡的来源标题单击打开原文；铅笔按钮单独进入来源编辑，Enter 或保存按钮提交、Esc 取消，清除来源也需保存；标题栏空白处选中整块而不进入编辑。
   placeholder 按 ProseMirror 的空段落结构显示。普通引用可用 CommonMark `> ` 或
   `/quote `（中文 `/引用 `）输入规则创建，两者都生成原生 `blockquote` 节点。
   `font-size.ts` 通过 `--editor-font` 联动 Inbox、Piece 编辑器与写作标题字号，并用

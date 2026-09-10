@@ -272,7 +272,7 @@
   gap: 4px;
 }
 
-.fn-quote-card__source-editor[hidden] {
+.fn-quote-card__header [hidden] {
   display: none;
 }
 
@@ -300,6 +300,7 @@
 
 .fn-quote-card__source-action {
   display: inline-flex;
+  flex-shrink: 0;
   align-items: center;
   justify-content: center;
   width: 26px;
@@ -321,6 +322,27 @@
   width: 15px;
   height: 15px;
 }
+
+.fn-quote-card__source a {
+  color: var(--color-accent);
+  cursor: pointer;
+  text-decoration: none;
+}
+.fn-quote-card__source a:hover { text-decoration: underline; }
+.fn-quote-card__edit {
+  margin-left: auto;
+  opacity: 0;
+}
+.fn-quote-card:hover .fn-quote-card__edit,
+.fn-quote-card:focus-within .fn-quote-card__edit {
+  opacity: 1;
+}
+.fn-quote-card__header a:focus-visible,
+.fn-quote-card__source-action:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
 
 .fn-quote-card__title-line {
   display: none;

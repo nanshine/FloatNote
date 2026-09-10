@@ -419,6 +419,7 @@ export const quoteCardView = $view(quoteCardSchema.node, (): NodeViewConstructor
   return (initialNode, view, getPos) => {
     let node = initialNode;
     let selected = false;
+    let editing = false;
     const dom = document.createElement("aside");
     dom.className = "fn-quote-card";
     dom.dataset.fnQuoteCard = "";
@@ -441,22 +442,28 @@ export const quoteCardView = $view(quoteCardSchema.node, (): NodeViewConstructor
     urlInput.placeholder = "https://…";
     urlInput.inputMode = "url";
     urlInput.setAttribute("aria-label", "引用来源链接");
-    const openSource = document.createElement("button");
-    openSource.type = "button";
-    openSource.className = "fn-quote-card__source-action";
-    openSource.setAttribute("aria-label", "打开引用来源");
-    openSource.title = "打开引用来源";
-    openSource.innerHTML = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3H3.75A.75.75 0 0 0 3 3.75v8.5c0 .41.34.75.75.75h8.5a.75.75 0 0 0 .75-.75V10M9 3h4v4M13 3 7.5 8.5" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round"/></svg>';
     const clearSource = document.createElement("button");
     clearSource.type = "button";
     clearSource.className = "fn-quote-card__source-action";
     clearSource.setAttribute("aria-label", "移除引用来源");
     clearSource.title = "移除引用来源";
     clearSource.innerHTML = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 4 8 8m0-8-8 8" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round"/></svg>';
-    sourceEditor.append(labelInput, urlInput, openSource, clearSource);
+    const editSource = document.createElement("button");
+    editSource.type = "button";
+    editSource.className = "fn-quote-card__source-action fn-quote-card__edit";
+    editSource.setAttribute("aria-label", "编辑引用来源");
+    editSource.title = "编辑引用来源";
+    editSource.innerHTML = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="m10 3 3 3-7.5 7.5H2.5v-3L10 3Zm-1.5 1.5 3 3" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linejoin="round"/></svg>';
+    const saveSource = document.createElement("button");
+    saveSource.type = "button";
+    saveSource.className = "fn-quote-card__source-action";
+    saveSource.setAttribute("aria-label", "保存引用来源");
+    saveSource.title = "保存引用来源（Enter）；Esc 取消";
+    saveSource.innerHTML = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="m3 8 3 3 7-7" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+    sourceEditor.append(labelInput, urlInput, saveSource, clearSource);
     const contentDOM = document.createElement("div");
     contentDOM.className = "fn-quote-card__content";
-    header.append(icon, source, sourceEditor);
+    header.append(icon, source, editSource, sourceEditor);
     dom.append(header, contentDOM);
 
     const sourceValues = () => {
@@ -466,7 +473,7 @@ export const quoteCardView = $view(quoteCardSchema.node, (): NodeViewConstructor
       let href = "";
       title?.descendants((child) => {
         const link = child.marks.find((mark) => mark.type.name === "link");
-        if (!href && link && label.includes(child.textContent)) href = safeMarkdownUrl(String(link.attrs.href ?? ""));
+        if (!href && link && label.includes(child.textContent.trim())) href = safeMarkdownUrl(String(link.attrs.href ?? ""));
       });
       return { label, href };
     };
@@ -504,39 +511,58 @@ export const quoteCardView = $view(quoteCardSchema.node, (): NodeViewConstructor
 
     const syncSelection = () => {
       dom.classList.toggle("is-block-selected", selected);
-      source.hidden = selected;
-      sourceEditor.hidden = !selected;
+      source.hidden = editing;
+      sourceEditor.hidden = !editing;
+      editSource.hidden = editing || !view.editable;
     };
     const render = () => {
       const { label, href } = sourceValues();
-      source.textContent = label || "引用";
+      source.replaceChildren();
+      if (href) {
+        const anchor = document.createElement("a");
+        anchor.textContent = label || href;
+        anchor.title = href;
+        wireOpenUrlLink(anchor, href);
+        source.append(anchor);
+      } else {
+        source.textContent = label || "引用";
+      }
       source.classList.toggle("has-link", Boolean(href));
-      if (document.activeElement !== labelInput) labelInput.value = label;
-      if (document.activeElement !== urlInput) urlInput.value = href;
-      openSource.hidden = !href;
-      openSource.dataset.href = href;
+      if (!editing) {
+        labelInput.value = label;
+        urlInput.value = href;
+      }
       clearSource.hidden = !label && !href;
       syncSelection();
     };
     header.addEventListener("mousedown", (event) => {
-      if (!(event.target as Element).closest("input, button")) selectNodeFromPointer(event, view, getPos);
+      if (!(event.target as Element).closest("input, button, a")) selectNodeFromPointer(event, view, getPos);
     });
-    labelInput.addEventListener("change", commitSource);
-    labelInput.addEventListener("blur", commitSource);
-    urlInput.addEventListener("change", commitSource);
-    urlInput.addEventListener("blur", commitSource);
-    openSource.addEventListener("click", () => {
-      const href = openSource.dataset.href ?? "";
-      if (href) {
-        const anchor = document.createElement("a");
-        wireOpenUrlLink(anchor, href);
-        anchor.click();
+    editSource.addEventListener("click", () => {
+      if (!view.editable) return;
+      editing = true;
+      syncSelection();
+      labelInput.focus();
+      labelInput.select();
+    });
+    const finishEditing = (save: boolean) => {
+      if (save) commitSource();
+      editing = false;
+      render();
+      editSource.focus();
+    };
+    saveSource.addEventListener("click", () => finishEditing(true));
+    sourceEditor.addEventListener("keydown", (event) => {
+      if (event.isComposing) return;
+      if (event.key === "Enter" || event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        finishEditing(event.key === "Enter");
       }
     });
     clearSource.addEventListener("click", () => {
       labelInput.value = "";
       urlInput.value = "";
-      commitSource();
       labelInput.focus();
     });
     render();
@@ -558,6 +584,7 @@ export const quoteCardView = $view(quoteCardSchema.node, (): NodeViewConstructor
         syncSelection();
       },
       stopEvent: (event) => header.contains(event.target as Node),
+      ignoreMutation: (mutation) => mutation.type !== "selection" && header.contains(mutation.target),
     };
   };
 });
