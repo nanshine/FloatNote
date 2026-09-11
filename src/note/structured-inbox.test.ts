@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from "vitest";
 import { undo } from "@milkdown/kit/prose/history";
+import { decodeInbox, encodeInbox } from "@floatnote/note-logic";
 import { createStructuredMarkdownEditor, type StructuredMarkdownEditor } from "../shared/markdown/structured-editor";
 import { annotationsFromMarks, applyMetadataMarks, applyQuoteSources, createStructuredInbox, quoteSourcesFromNodes } from "./structured-inbox";
 
@@ -51,6 +52,29 @@ describe("structured inbox annotation bridge", () => {
       { id: "ann-a", tagId: "a", from: 0, to: 11 },
       { id: "ann-b", tagId: "b", from: 4, to: 16 },
     ]);
+  });
+
+  it("round-trips one annotation split across quote blocks and Markdown syntax", async () => {
+    const parent = document.createElement("div");
+    document.body.append(parent);
+    const markdown = "> [!quote] First\n> alpha **bold**\n\nbetween\n\n> [!quote] Second\n> omega";
+    const from = markdown.indexOf("First");
+    const to = markdown.length;
+    const tags = [{ id: "focus", name: "重点", color: "#f00" }];
+    editor = await createStructuredMarkdownEditor({ parent, context: { kind: "inbox" }, markdown });
+    editor.withView((view) => applyMetadataMarks(view, markdown, {
+      tags,
+      annotations: [{ id: "ann-cross-block", tagId: "focus", from, to }],
+      quoteSources: [],
+    }));
+
+    const annotations = editor.withView((view) => annotationsFromMarks(view, editor!.getMarkdown()));
+    expect(annotations).toEqual([
+      { id: "ann-cross-block", tagId: "focus", from, to },
+    ]);
+    const decoded = decodeInbox(encodeInbox(markdown, { tags, annotations, quoteSources: [] }));
+    expect(decoded.warnings).toEqual([]);
+    expect(decoded.metadata.annotations).toEqual(annotations);
   });
 
   it("projects v2 quote source bundle ids onto quote-card nodes", async () => {

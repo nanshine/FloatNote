@@ -81,19 +81,20 @@ function applyMetadataMarks(view: EditorView, markdown: string, metadata: InboxM
 
 function annotationsFromMarks(view: EditorView, markdown: string): TextAnnotation[] {
   const aligned = alignTextNodes(view.state.doc, markdown);
-  const ranges = new Map<string, TextAnnotation[]>();
+  // One logical annotation can be split across multiple ProseMirror text nodes
+  // by block boundaries or Markdown marks. The disk protocol requires its id
+  // to occur only once, so restore the single range that spans those pieces.
+  const ranges = new Map<string, TextAnnotation>();
   for (const text of aligned) {
     for (const mark of text.node.marks) {
       if (mark.type.name !== "floatnote_annotation" || !mark.attrs.id || !mark.attrs.tagId) continue;
       const key = `${mark.attrs.id}\u0000${mark.attrs.tagId}`;
-      const pieces = ranges.get(key) ?? [];
-      const previous = pieces.at(-1);
-      if (previous && previous.to === text.sourceFrom) previous.to = text.sourceTo;
-      else pieces.push({ id: mark.attrs.id, tagId: mark.attrs.tagId, from: text.sourceFrom, to: text.sourceTo });
-      ranges.set(key, pieces);
+      const range = ranges.get(key);
+      if (range) range.to = Math.max(range.to, text.sourceTo);
+      else ranges.set(key, { id: mark.attrs.id, tagId: mark.attrs.tagId, from: text.sourceFrom, to: text.sourceTo });
     }
   }
-  return [...ranges.values()].flat().sort((a, b) => a.from - b.from || a.to - b.to);
+  return [...ranges.values()].sort((a, b) => a.from - b.from || a.to - b.to);
 }
 
 /** Annotation marks participate in ProseMirror history, while tag definitions
