@@ -60,6 +60,21 @@ export function compareVersions(a, b) {
   return 0;
 }
 
+export function selectChannelUpdates(release, manifest, previousByChannel) {
+  const requiredChannel = release.prerelease ? "preview" : "stable";
+  const channels = [requiredChannel];
+  if (!release.prerelease) channels.push("preview");
+  return channels.filter((channel) => {
+    const previous = previousByChannel[channel];
+    if (!previous) return true;
+    const comparison = compareVersions(manifest.version, previous.version);
+    if (channel === requiredChannel && comparison <= 0) {
+      throw new Error("Refusing to overwrite an equal or newer channel version; publish a new version");
+    }
+    return comparison > 0;
+  });
+}
+
 async function main() {
   if (process.argv[2] === "validate-key") { validateKey(process.env.FLOATNOTE_UPDATER_PUBLIC_KEY); return; }
   const release = JSON.parse(await readFile("release.json", "utf8"));
@@ -75,15 +90,15 @@ async function main() {
     const response = await fetch(url, { method: "HEAD" });
     if (!response.ok) throw new Error(`Update package unavailable (${response.status})`);
   }
-  const output = `feed/${release.prerelease ? "preview" : "stable"}.json`;
-  let previous;
-  try { previous = JSON.parse(await readFile(output, "utf8")); }
-  catch (error) { if (error.code !== "ENOENT") throw error; }
-  if (previous && compareVersions(manifest.version, previous.version) <= 0) {
-    throw new Error("Refusing to overwrite an equal or newer channel version; publish a new version");
+  const previousByChannel = {};
+  for (const channel of ["preview", "stable"]) {
+    try { previousByChannel[channel] = JSON.parse(await readFile(`feed/${channel}.json`, "utf8")); }
+    catch (error) { if (error.code !== "ENOENT") throw error; }
   }
   await mkdir("feed", { recursive: true });
-  await writeFile(output, `${JSON.stringify(manifest, null, 2)}\n`);
+  for (const channel of selectChannelUpdates(release, manifest, previousByChannel)) {
+    await writeFile(`feed/${channel}.json`, `${JSON.stringify(manifest, null, 2)}\n`);
+  }
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   main().catch((error) => { console.error(error.message); process.exitCode = 1; });

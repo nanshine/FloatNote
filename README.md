@@ -9,11 +9,13 @@
 <div align="center">
   <p>一款悬浮在桌面上、帮助你从阅读到写作的本地笔记工具。</p>
   <p>
-    <a href="https://github.com/NanshineLoong/FloatNote/releases/download/v0.1.0/FloatNote_0.1.0_aarch64.dmg"><strong>下载 macOS 预览版 · Apple Silicon</strong></a>
+    <a href="https://github.com/nanshine/FloatNote/releases/download/v0.2.0/FloatNote_0.2.0_aarch64.dmg"><strong>下载 macOS · Apple Silicon</strong></a>
     &nbsp;·&nbsp;
-    <a href="https://github.com/NanshineLoong/FloatNote/releases/download/v0.1.0/FloatNote_0.1.0_x86_64.dmg"><strong>下载 macOS 预览版 · Intel</strong></a>
+    <a href="https://github.com/nanshine/FloatNote/releases/download/v0.2.0/FloatNote_0.2.0_x86_64.dmg"><strong>下载 macOS · Intel</strong></a>
+    &nbsp;·&nbsp;
+    <a href="https://github.com/nanshine/FloatNote/releases/download/v0.2.0/FloatNote_0.2.0_x86_64-setup.exe"><strong>下载 Windows · x86_64</strong></a>
   </p>
-  <p>Windows 版本正在准备中</p>
+  <p><a href="https://github.com/nanshine/FloatNote/releases/latest">查看最新正式版本与更新说明</a></p>
 </div>
 
 ## 为什么是 FloatNote？
@@ -105,10 +107,12 @@
 
 ## 下载与开始使用
 
-- **Apple Silicon Mac**（M1/M2/M3/M4 及后续芯片）：[直接下载 `.dmg`](https://github.com/NanshineLoong/FloatNote/releases/download/v0.1.0/FloatNote_0.1.0_aarch64.dmg)
-- **Intel Mac**：[直接下载 `.dmg`](https://github.com/NanshineLoong/FloatNote/releases/download/v0.1.0/FloatNote_0.1.0_x86_64.dmg)
-- **所有版本**：[查看 GitHub Releases](https://github.com/NanshineLoong/FloatNote/releases)
-- **Windows**：正在准备中。
+- **Apple Silicon Mac**（M1/M2/M3/M4 及后续芯片）：[下载 `v0.2.0 .dmg`](https://github.com/nanshine/FloatNote/releases/download/v0.2.0/FloatNote_0.2.0_aarch64.dmg)
+- **Intel Mac**：[下载 `v0.2.0 .dmg`](https://github.com/nanshine/FloatNote/releases/download/v0.2.0/FloatNote_0.2.0_x86_64.dmg)
+- **Windows x86_64**：[下载 `v0.2.0` 安装包](https://github.com/nanshine/FloatNote/releases/download/v0.2.0/FloatNote_0.2.0_x86_64-setup.exe)
+- **所有版本与更新说明**：[查看 GitHub Releases](https://github.com/nanshine/FloatNote/releases)
+
+macOS 安装包已完成 Developer ID 签名与 Apple 公证。Windows 安装包支持应用内更新验签，但尚未配置 Authenticode，首次安装时 Windows 可能显示未知发布者或 SmartScreen 提示。
 
 安装后打开 FloatNote，跟随新手引导创建第一个项目，试着采集一段文字，再写下自己的想法。你可以随时关闭引导，之后在「设置 → 通用 → 新手引导」重新开始。
 

@@ -7,6 +7,7 @@ import { mountUpdates } from "../../../src/settings/updates";
 import { publishUpdateStatus } from "../../../src/platform/updates";
 const params = new URLSearchParams(location.search);
 document.documentElement.dataset.theme = params.get("theme") === "dark" ? "dark" : "light";
+const state = params.get("state") === "error" ? "error" : "available";
 mockWindows("main");
 mockIPC(() => null, { shouldMockEvents: true });
 const root = document.querySelector<HTMLElement>("#app")!;
@@ -18,5 +19,7 @@ await mountUpdates(root.querySelector<HTMLElement>("#update-settings")!);
 root.querySelector("[data-update-install]")!.addEventListener("click", () => {
   void publishUpdateStatus({ phase: "downloading", info, progress: { downloaded: 40, total: 100 } });
 });
-await publishUpdateStatus({ phase: "available", info });
+await publishUpdateStatus(state === "error"
+  ? { phase: "error", error: "Could not fetch a valid release JSON from the remote" }
+  : { phase: "available", info });
 document.body.dataset.reviewReady = "true";

@@ -14,5 +14,15 @@ describe("application update UI", () => {
       assert.equal(await $("[data-update-check]").isEnabled(), false);
       assert.equal(await $("progress").getAttribute("value"), "40");
     });
+
+    it(`shows a recoverable feed error in ${theme} theme`, async () => {
+      await browser.setWindowSize(780, 620);
+      await browser.url(`http://127.0.0.1:1422/tests/review/browser/updates.html?theme=${theme}&state=error`);
+      await browser.waitUntil(() => browser.execute(() => document.body.dataset.reviewReady === "true"));
+      assert.equal(await $("[data-update-error-title]").getText(), "无法读取更新信息");
+      assert.match(await $("[data-update-error-message]").getText(), /稍后重试/);
+      assert.equal(await $("[data-update-retry]").isDisplayed(), true);
+      await browser.saveScreenshot(`artifacts/browser-review/updates-error-${theme}.png`);
+    });
   }
 });

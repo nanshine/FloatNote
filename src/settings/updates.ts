@@ -1,25 +1,61 @@
 import { onShowUpdateSettings, onUpdateStatus, requestUpdate, type UpdateStatus } from "../platform/updates";
+import { createIcon } from "../shared/ui/icon";
+
+function updateErrorCopy(error: string, hasUpdate: boolean): { title: string; message: string } {
+  if (/valid release json/i.test(error)) {
+    return {
+      title: "无法读取更新信息",
+      message: "更新服务暂时没有返回有效内容，请稍后重试。",
+    };
+  }
+  return hasUpdate
+    ? { title: "更新未完成", message: "安装包没有成功处理，你可以安全地重试。" }
+    : { title: "无法检查更新", message: "请确认网络连接正常，然后重试。" };
+}
 
 export async function mountUpdates(root: HTMLElement): Promise<() => void> {
-  root.innerHTML = `<div class="settings-card"><div class="settings-line">
+  root.innerHTML = `<div class="settings-card update-card" data-update-phase="idle"><div class="settings-line update-summary">
     <div><strong>应用更新</strong><small data-update-status role="status">正在读取版本…</small></div>
-    <button class="settings-text-button" type="button" data-update-check>检查更新</button>
-    </div><div class="update-details"><p data-update-error role="alert" hidden></p>
+    <button class="settings-text-button update-check" type="button" data-update-check>${createIcon({ phosphor: "ph ph-arrow-clockwise" }).outerHTML}<span>检查更新</span></button>
+    </div><div class="update-details">
+    <div class="update-error" data-update-error role="alert" hidden>
+      <span class="update-error-mark" aria-hidden="true">${createIcon({ phosphor: "ph ph-warning-circle" }).outerHTML}</span>
+      <div class="update-error-copy"><strong data-update-error-title></strong><p data-update-error-message></p>
+        <details><summary>查看技术详情</summary><code data-update-error-details></code></details>
+      </div>
+      <button class="settings-text-button update-retry" type="button" data-update-retry>${createIcon({ phosphor: "ph ph-arrow-clockwise" }).outerHTML}<span>重试</span></button>
+    </div>
     <pre data-update-notes hidden></pre><progress data-update-progress aria-label="更新下载进度" hidden></progress>
-    <button class="settings-text-button" type="button" data-update-install hidden>下载并更新</button></div></div>`;
+    <button class="settings-text-button update-install" type="button" data-update-install hidden>${createIcon({ phosphor: "ph ph-download-simple" }).outerHTML}<span>下载并更新</span></button></div></div>`;
+  const card = root.querySelector<HTMLElement>(".update-card")!;
   const text = root.querySelector<HTMLElement>("[data-update-status]")!;
-  const error = root.querySelector<HTMLElement>("[data-update-error]")!;
+  const errorPanel = root.querySelector<HTMLElement>("[data-update-error]")!;
+  const errorTitle = root.querySelector<HTMLElement>("[data-update-error-title]")!;
+  const errorMessage = root.querySelector<HTMLElement>("[data-update-error-message]")!;
+  const errorDetails = root.querySelector<HTMLElement>("[data-update-error-details]")!;
   const notes = root.querySelector<HTMLElement>("[data-update-notes]")!;
   const progress = root.querySelector<HTMLProgressElement>("progress")!;
   const check = root.querySelector<HTMLButtonElement>("[data-update-check]")!;
   const install = root.querySelector<HTMLButtonElement>("[data-update-install]")!;
+  const retry = root.querySelector<HTMLButtonElement>("[data-update-retry]")!;
+  let retryRequest: "check" | "install" = "check";
+  const showError = (message: string, hasUpdate: boolean) => {
+    const copy = updateErrorCopy(message, hasUpdate);
+    errorPanel.hidden = false;
+    errorTitle.textContent = copy.title;
+    errorMessage.textContent = copy.message;
+    errorDetails.textContent = message;
+    retryRequest = hasUpdate ? "install" : "check";
+  };
   const render = (status: UpdateStatus) => {
     const busy = ["checking", "downloading", "preparing", "installing"].includes(status.phase);
+    card.dataset.updatePhase = status.phase;
+    card.setAttribute("aria-busy", String(busy));
     check.disabled = busy;
     install.disabled = busy;
     install.hidden = !status.info?.version;
-    error.hidden = !status.error;
-    error.textContent = status.error ?? "";
+    errorPanel.hidden = !status.error;
+    if (status.error) showError(status.error, Boolean(status.info?.version));
     notes.hidden = !status.info?.notes;
     notes.textContent = status.info?.notes ?? "";
     progress.hidden = status.phase !== "downloading";
@@ -40,10 +76,11 @@ export async function mountUpdates(root: HTMLElement): Promise<() => void> {
   };
   const send = async (request: "check" | "install" | "snapshot") => {
     try { await requestUpdate(request); }
-    catch (reason) { error.hidden = false; error.textContent = String(reason); }
+    catch (reason) { showError(String(reason), request === "install"); }
   };
   check.onclick = () => void send("check");
   install.onclick = () => void send("install");
+  retry.onclick = () => void send(retryRequest);
   const unlisten = await onUpdateStatus(render);
   const stopNavigation = await onShowUpdateSettings(() => {
     root.closest(".settings-window")?.querySelector<HTMLButtonElement>('[data-tab="general"]')?.click();

@@ -18,6 +18,22 @@ it("renders untrusted notes as text, unknown download size and retryable failure
   render({ phase: "error", info, error: "network failed" });
   const button = root.querySelector<HTMLButtonElement>("[data-update-install]")!;
   expect(button.disabled).toBe(false);
-  button.click();
+  expect(root.querySelector("[data-update-error-title]")?.textContent).toBe("更新未完成");
+  expect(root.querySelector("[data-update-error-details]")?.textContent).toBe("network failed");
+  root.querySelector<HTMLButtonElement>("[data-update-retry]")!.click();
   expect(requestUpdate).toHaveBeenCalledWith("install");
+});
+
+it("localizes an invalid feed response and offers a check retry", async () => {
+  let render!: (status: UpdateStatus) => void;
+  vi.mocked(onUpdateStatus).mockImplementation(async (handler) => { render = handler; return () => {}; });
+  const root = document.createElement("div");
+  await mountUpdates(root);
+  render({ phase: "error", error: "Could not fetch a valid release JSON from the remote" });
+  expect(root.querySelector(".update-card")?.getAttribute("aria-busy")).toBe("false");
+  expect(root.querySelector("[data-update-error-title]")?.textContent).toBe("无法读取更新信息");
+  expect(root.querySelector("[data-update-error-message]")?.textContent).toContain("稍后重试");
+  expect(root.querySelector("[data-update-error-details]")?.textContent).toContain("valid release JSON");
+  root.querySelector<HTMLButtonElement>("[data-update-retry]")!.click();
+  expect(requestUpdate).toHaveBeenCalledWith("check");
 });
