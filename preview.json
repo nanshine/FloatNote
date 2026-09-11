@@ -1,0 +1,19 @@
+{
+  "version": "0.2.0",
+  "notes": "Apple Silicon（M1/M2/M3/M4 及后续芯片）请选择文件名包含 aarch64 的 DMG；Intel Mac 请选择文件名包含 x86_64 的 DMG；Windows x86_64 用户请选择 -setup.exe 安装包。SIG 文件由应用内更新器使用，无需手动打开。\n\n## 新功能\n\n- 引入结构化 Markdown 编辑器，并完善跨区块批注、媒体与引用编辑体验。\n- Agent 运行时迁移到内置 Rust Rig，改进会话、工具权限、Provider 配置和恢复能力。\n- 新增首次启动引导、助手起始建议及更清晰的 AI 配置状态提示。\n- 新增签名的应用内更新：自动与手动检查、更新说明、下载进度、验签、安装重启和失败重试。\n- 完善 macOS 与 Windows 的选区捕获、窗口外观、托盘图标及跨平台行为。\n\n## 修复\n\n- 修复 Windows 选区、快捷键、输入法定位、窗口滚动和大小写重命名问题。\n- 改进 macOS 捕获权限恢复、应用启动显示及助手输入焦点。\n- 修复跨 Markdown 区块的批注范围合并与引用来源编辑。\n\n## 已知问题\n\n- v0.1.0 尚未包含应用内更新器，需要手动安装一次 v0.2.0；从本版本开始才能验证后续在线升级。\n- Windows 安装器带有 Tauri 更新验签签名，但尚未配置 Authenticode，首次安装可能出现未知发布者或 SmartScreen 提示。\n\n## 验证\n\n- 前端与共享逻辑、基础设施及 Rust 测试全部通过。\n- Apple Silicon 与 Intel macOS DMG 均已完成 Developer ID 签名、Apple 公证、staple 和 Gatekeeper 验证。\n- Windows x86_64 NSIS 安装包及三平台更新包签名已由发布流水线生成。\n\n## What Changed\n\n- fix: improve Windows capture shortcuts and markdown by @accumulate-ctrl in https://github.com/nanshine/FloatNote/pull/1\n- release: prepare FloatNote v0.2.0 by @nanshine in https://github.com/nanshine/FloatNote/pull/2\n\n完整变更：https://github.com/nanshine/FloatNote/compare/v0.1.0...v0.2.0",
+  "pub_date": "2026-09-11T05:58:57Z",
+  "platforms": {
+    "darwin-aarch64": {
+      "url": "https://github.com/nanshine/FloatNote/releases/download/v0.2.0/FloatNote_0.2.0_aarch64.app.tar.gz",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSR2F1TGtpazdBTzUxa1ZCVGN0ZXVSbXFpNSt4Y0hUbnBtZTF4UjdpeGxlZS9GcWFMUk1odmxMR2F0MnJvcnNsaldRODRMY2JVMEtIbE5YNUZldkVMVXQxUU9UUGF3K3dnPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg5MTA1MDQwCWZpbGU6RmxvYXROb3RlXzAuMi4wX2FhcmNoNjQuYXBwLnRhci5negpYeTk1azFkNXlma1JCb0hFbktBL3FDTzYyd0FEYnViNDdCanYrQWpKZkNNQjBtbGp2czZRVFQyWWZVMUNpT3pXVkZnemVrbFlabXllTER0YXpQU2tDUT09Cg=="
+    },
+    "darwin-x86_64": {
+      "url": "https://github.com/nanshine/FloatNote/releases/download/v0.2.0/FloatNote_0.2.0_x86_64.app.tar.gz",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSR2F1TGtpazdBTzRNNC9OZ2g2WjM1Syt1ZGxiTTVpYUJ2RXcyaGlVbXkxdGNNeHkzTDdtYTB1UEdxdkNRTzlzNE5iZnBZaXBsYkU5eHdXbXI0NENuVnBvNVRZUEltK3djPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg5MTA1NzU3CWZpbGU6RmxvYXROb3RlXzAuMi4wX3g4Nl82NC5hcHAudGFyLmd6CkgwVnl2VFNENzcrTzYwVG16UWZtNWxuVDc3N2Vaa09rWWdFOWtTaWp3eWg0d2JFOHU4cUlBNmN1L2dnZ3Nmb05ySnFxcE5OOWptMmowVFF0QTZmK0R3PT0K"
+    },
+    "windows-x86_64": {
+      "url": "https://github.com/nanshine/FloatNote/releases/download/v0.2.0/FloatNote_0.2.0_x86_64-setup.exe",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSR2F1TGtpazdBTzc1V09oVU9VVkhVeGZZS0JBVWNnalJQcU5JbkMraC9XWC9ac2hIZVhaeG81WU8xcTBqdENmR0NhTDRFUW9heHYyaGFjMG4xbHhScTl4WlNRdHZIQ1FBPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg5MTA1MTM4CWZpbGU6RmxvYXROb3RlXzAuMi4wX3g4Nl82NC1zZXR1cC5leGUKb3RpY1ozUzg4bFJWeXFtRXg2aldjOFVTMXcvbUdkSU1sRzZTWGtIbzlUSWNsSUU1UWhoV043b0liRXkzbHBWQmMwcUg1bmJPMm9vdzYxZFM3bHU5QlE9PQo="
+    }
+  }
+}
