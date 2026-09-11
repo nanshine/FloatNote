@@ -1,0 +1,51 @@
+name: Publish update feed
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Published release tag to promote to its update channel
+        required: true
+        type: string
+permissions:
+  contents: write
+concurrency:
+  group: update-feed
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag }}
+      FLOATNOTE_UPDATER_PUBLIC_KEY: ${{ vars.FLOATNOTE_UPDATER_PUBLIC_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.19.0
+      - name: Read release and existing channel
+        run: |
+          set -euo pipefail
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" > release.json
+          if git ls-remote --exit-code --heads origin updates; then
+            git fetch origin updates
+            git worktree add feed FETCH_HEAD
+          else
+            mkdir feed
+            git -C feed init -b updates
+            git -C feed remote add origin "$(git remote get-url origin)"
+            git -C feed config http.https://github.com/.extraheader "$(git config --get http.https://github.com/.extraheader)"
+          fi
+      - name: Validate all platforms and prepare channel
+        run: node scripts/update-release.mjs
+      - name: Publish channel atomically
+        run: |
+          set -euo pipefail
+          git -C feed config user.name github-actions[bot]
+          git -C feed config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git -C feed add --all
+          git -C feed commit -m "Publish update $RELEASE_TAG"
+          git -C feed push origin HEAD:updates

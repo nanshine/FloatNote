@@ -1,14 +1,10 @@
+import { mountCapturePermission } from "../shared/capture-permission";
 import { listen } from "@tauri-apps/api/event";
 import { showToast } from "../shared/toast";
 
-/** 订阅权限/自动化相关提示事件：macOS 后端触发，窗内只给简短 toast，
- * 不污染正文区。30 秒内对 automation-needed 去重，避免重复打扰。 */
+/** Persistent capture permission guidance plus deduplicated browser automation notices. */
 export function attachAutomationToasts() {
-  void listen("accessibility-needed", () => {
-    // macOS 已由后端弹过一次系统授权框；这里只在窗内给一条简短提示，
-    // 不再往 #note-body 正文区塞横幅（避免污染编辑器内容）。
-    showToast("需开启「辅助功能」权限后重试");
-  });
+  mountCapturePermission(document.body, true);
 
   let lastAutomationToastAt = 0;
 

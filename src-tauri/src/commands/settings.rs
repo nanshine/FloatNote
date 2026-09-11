@@ -2,6 +2,79 @@ use crate::config::{AiProviderConfig, AiProviderId, AssistantOutputMode, WindowS
 use crate::state::AppState;
 use tauri::{AppHandle, Emitter, State};
 
+/// Local configuration readiness; never probes the network or returns credentials.
+#[derive(serde::Serialize, Debug, PartialEq, Eq)]
+#[serde(tag = "status", rename_all = "snake_case")]
+pub enum AiReadiness {
+    Unconfigured,
+    Disabled,
+    Incomplete { message: String },
+    RuntimeUnavailable,
+    Ready,
+}
+
+fn ai_readiness(settings: &crate::config::AiSettings, runtime_ready: bool) -> AiReadiness {
+    if let Some(provider) = settings.active_provider_id {
+        let Some(profile) = settings.providers.get(&provider) else {
+            return AiReadiness::Incomplete {
+                message: "当前服务配置已缺失".into(),
+            };
+        };
+        if let Err(message) = profile.normalized_for(provider) {
+            return AiReadiness::Incomplete { message };
+        }
+        return if runtime_ready {
+            AiReadiness::Ready
+        } else {
+            AiReadiness::RuntimeUnavailable
+        };
+    }
+    if settings
+        .providers
+        .iter()
+        .any(|(id, profile)| profile.normalized_for(*id).is_ok())
+    {
+        AiReadiness::Disabled
+    } else if settings
+        .providers
+        .values()
+        .any(|profile| !profile.api_key.trim().is_empty() || !profile.model.trim().is_empty())
+    {
+        AiReadiness::Incomplete {
+            message: "请补全服务配置并启用".into(),
+        }
+    } else {
+        AiReadiness::Unconfigured
+    }
+}
+
+#[tauri::command]
+pub async fn get_ai_readiness(state: State<'_, AppState>) -> Result<AiReadiness, String> {
+    let _transaction = state.ai_settings_tx.lock().await;
+    let settings = state.config.lock().unwrap().ai_settings.clone();
+    Ok(ai_readiness(&settings, state.agent.is_configured()))
+}
+
+#[tauri::command]
+pub async fn retry_ai_configuration(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<AiReadiness, String> {
+    let _transaction = state.ai_settings_tx.lock().await;
+    let settings = state.config.lock().unwrap().ai_settings.clone();
+    if let Some(provider) = settings.active_provider_id {
+        if let Some(profile) = settings.providers.get(&provider) {
+            super::agent::configure_agent(&state, provider, profile).await?;
+        }
+    }
+    let readiness = ai_readiness(&settings, state.agent.is_configured());
+    let _ = app.emit(
+        "agent://configuration-changed",
+        readiness == AiReadiness::Ready,
+    );
+    Ok(readiness)
+}
+
 #[tauri::command]
 pub async fn save_ai_provider(
     app: AppHandle,
@@ -9,10 +82,8 @@ pub async fn save_ai_provider(
     provider_id: AiProviderId,
     provider_config: AiProviderConfig,
 ) -> Result<(), String> {
-    let updates_runtime = save_ai_provider_inner(&state, provider_id, provider_config).await?;
-    if updates_runtime {
-        let _ = app.emit("agent://configuration-changed", true);
-    }
+    save_ai_provider_inner(&state, provider_id, provider_config).await?;
+    let _ = app.emit("agent://configuration-changed", state.agent.is_configured());
     Ok(())
 }
 
@@ -31,14 +102,14 @@ async fn save_ai_provider_inner(
         .insert(provider_id, normalized.clone());
     let updates_runtime = old.ai_settings.active_provider_id == Some(provider_id);
     if updates_runtime {
-        super::agent::configure_agent(&state, provider_id, &normalized).await?;
+        super::agent::configure_agent(state, provider_id, &normalized).await?;
     }
     if let Err(error) = crate::config::save(&state.config_path, &candidate) {
         let recovery = if updates_runtime {
             if let Some(previous) = old.ai_settings.providers.get(&provider_id) {
-                super::agent::configure_agent(&state, provider_id, previous).await
+                super::agent::configure_agent(state, provider_id, previous).await
             } else {
-                super::agent::clear_agent_configuration(&state).await
+                super::agent::clear_agent_configuration(state).await
             }
         } else {
             Ok(())
@@ -82,18 +153,18 @@ async fn set_active_ai_provider_inner(
             .get(&provider)
             .ok_or("未知的 AI 提供商")?
             .normalized_for(provider)?;
-        super::agent::configure_agent(&state, provider, &profile).await?;
+        super::agent::configure_agent(state, provider, &profile).await?;
     }
     candidate.ai_settings.active_provider_id = provider_id;
     if let Err(error) = crate::config::save(&state.config_path, &candidate) {
         let recovery = if let Some(previous_provider) = old.ai_settings.active_provider_id {
             if let Some(previous) = old.ai_settings.providers.get(&previous_provider) {
-                super::agent::configure_agent(&state, previous_provider, previous).await
+                super::agent::configure_agent(state, previous_provider, previous).await
             } else {
-                super::agent::clear_agent_configuration(&state).await
+                super::agent::clear_agent_configuration(state).await
             }
         } else {
-            super::agent::clear_agent_configuration(&state).await
+            super::agent::clear_agent_configuration(state).await
         };
         return match recovery {
             Ok(()) => Err(error.to_string()),
@@ -229,7 +300,7 @@ fn is_valid_auto_popup_mode(mode: &str) -> bool {
 }
 
 pub(crate) fn should_install_selection_monitor(mode: &str) -> bool {
-    mode == "auto"
+    matches!(mode, "auto" | "shortcut")
 }
 
 #[cfg(test)]
@@ -250,22 +321,83 @@ mod tests {
             config: Mutex::new(config),
             ai_settings_tx: tokio::sync::Mutex::new(()),
             config_path,
-            agent: Mutex::new(None),
-            agent_ready: Mutex::new(false),
-            agent_spawn_error: Mutex::new(None),
+            runtime_profile: crate::paths::resolve_runtime_profile(
+                std::path::Path::new("/tmp/floatnote-test-config"),
+                Some(std::path::Path::new("/tmp/floatnote-test-home")),
+                std::path::Path::new("/tmp/floatnote-test-manifest"),
+                false,
+                None,
+            ),
+            onboarding_preview: Mutex::new(None),
+            agent: std::sync::Arc::new(crate::agent::AgentService::new()),
             active_note: Mutex::new(None),
             agent_seq: AtomicU64::new(0),
             watcher: Mutex::new(None),
             write_suppress: crate::watcher::new_suppress_list(),
             popup_cache: crate::popup::PopupCache::default(),
             mutations: Mutex::new(crate::agent::MutationStore::default()),
-            pending_skill_lists: Mutex::new(HashMap::new()),
-            pending_agent_configs: Mutex::new(HashMap::new()),
-            pending_agent_rewinds: Mutex::new(HashMap::new()),
-            pending_agent_sessions: Mutex::new(HashMap::new()),
-            pending_one_shots: Mutex::new(HashMap::new()),
+            pending_permissions: Mutex::new(HashMap::new()),
             authorized_roots: AuthorizedRoots::default(),
         }
+    }
+
+    #[test]
+    fn readiness_distinguishes_saved_active_invalid_and_unavailable_profiles() {
+        use super::{ai_readiness, AiReadiness};
+        let mut settings = crate::config::AiSettings::default();
+        assert_eq!(ai_readiness(&settings, false), AiReadiness::Unconfigured);
+        settings
+            .providers
+            .get_mut(&AiProviderId::Openai)
+            .unwrap()
+            .api_key = "secret".into();
+        assert!(matches!(
+            ai_readiness(&settings, false),
+            AiReadiness::Incomplete { .. }
+        ));
+        settings
+            .providers
+            .get_mut(&AiProviderId::Openai)
+            .unwrap()
+            .model = "test-model".into();
+        assert_eq!(ai_readiness(&settings, false), AiReadiness::Disabled);
+        settings.active_provider_id = Some(AiProviderId::Openai);
+        assert_eq!(
+            ai_readiness(&settings, false),
+            AiReadiness::RuntimeUnavailable
+        );
+        assert_eq!(ai_readiness(&settings, true), AiReadiness::Ready);
+        settings.providers.remove(&AiProviderId::Openai);
+        assert!(matches!(
+            ai_readiness(&settings, true),
+            AiReadiness::Incomplete { .. }
+        ));
+    }
+
+    #[test]
+    fn saved_history_can_open_after_disabling_the_provider() {
+        let dir = crate::testutil::tempdir();
+        let service = crate::agent::AgentService::new();
+        service
+            .configure(
+                crate::agent::build_agent_model(
+                    AiProviderId::Openai,
+                    &AiProviderConfig {
+                        api_key: "test-key".into(),
+                        model: "test-model".into(),
+                        base_url: None,
+                    },
+                )
+                .unwrap(),
+            )
+            .unwrap();
+        let path = dir.path().to_string_lossy().into_owned();
+        let (file, _) = service
+            .new_session("history-test".into(), path.clone(), path)
+            .unwrap();
+        service.clear_configuration().unwrap();
+        assert!(service.open_session("history-test".into(), file).is_ok());
+        assert!(!service.is_configured());
     }
 
     #[test]
@@ -278,12 +410,12 @@ mod tests {
         assert!(!is_valid_auto_popup_mode("always"));
         assert!(!is_valid_auto_popup_mode("OFF"));
         assert!(should_install_selection_monitor("auto"));
-        assert!(!should_install_selection_monitor("shortcut"));
+        assert!(should_install_selection_monitor("shortcut"));
         assert!(!should_install_selection_monitor("off"));
     }
 
     #[test]
-    fn inactive_provider_save_commits_to_memory_and_disk_without_sidecar() {
+    fn inactive_provider_save_commits_to_memory_and_disk_without_runtime_swap() {
         let dir = crate::testutil::tempdir();
         let path = dir.path().join("config.json");
         let state = state_at(path.clone(), Config::default());
@@ -313,7 +445,7 @@ mod tests {
     }
 
     #[test]
-    fn deactivation_commits_without_contacting_the_sidecar() {
+    fn deactivation_commits_and_clears_the_runtime_model() {
         let dir = crate::testutil::tempdir();
         let path = dir.path().join("config.json");
         let mut config = Config::default();

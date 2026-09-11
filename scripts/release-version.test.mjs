@@ -15,7 +15,6 @@ async function writeJson(filePath, value) {
 async function fixture(version = "0.1.0") {
   const root = await mkdtemp(path.join(os.tmpdir(), "floatnote-version-"));
   await writeJson(path.join(root, "package.json"), { name: "floatnote", version });
-  await writeJson(path.join(root, "sidecar/package.json"), { name: "sidecar", version });
   await writeJson(path.join(root, "shared/note-logic/package.json"), { name: "logic", version });
   await writeJson(path.join(root, "package-lock.json"), {
     name: "floatnote",
@@ -23,7 +22,6 @@ async function fixture(version = "0.1.0") {
     lockfileVersion: 3,
     packages: {
       "": { name: "floatnote", version },
-      sidecar: { name: "sidecar", version },
       "shared/note-logic": { name: "logic", version },
     },
   });
@@ -67,14 +65,13 @@ test("set updates every packaged version copy and the lockfile", async () => {
   const result = run(root, "set", "0.2.0-beta.1");
 
   assert.equal(result.status, 0, result.stderr);
-  for (const relativePath of ["package.json", "sidecar/package.json", "shared/note-logic/package.json"]) {
+  for (const relativePath of ["package.json", "shared/note-logic/package.json"]) {
     const pkg = JSON.parse(await readFile(path.join(root, relativePath), "utf8"));
     assert.equal(pkg.version, "0.2.0-beta.1");
   }
   const lock = JSON.parse(await readFile(path.join(root, "package-lock.json"), "utf8"));
   assert.equal(lock.version, "0.2.0-beta.1");
   assert.equal(lock.packages[""].version, "0.2.0-beta.1");
-  assert.equal(lock.packages.sidecar.version, "0.2.0-beta.1");
   assert.equal(lock.packages["shared/note-logic"].version, "0.2.0-beta.1");
   assert.match(await readFile(path.join(root, "src-tauri/Cargo.toml"), "utf8"), /version = "0\.2\.0-beta\.1"/);
   assert.equal(run(root, "check", "--tag", "v0.2.0-beta.1").status, 0);
@@ -93,14 +90,14 @@ test("set validates every destination before changing any version", async () => 
   const root = await fixture();
   const lockPath = path.join(root, "package-lock.json");
   const lock = JSON.parse(await readFile(lockPath, "utf8"));
-  delete lock.packages.sidecar;
+  delete lock.packages["shared/note-logic"];
   await writeJson(lockPath, lock);
 
   const result = run(root, "set", "0.2.0");
 
   assert.equal(result.status, 1);
-  assert.match(result.stderr, /missing workspace entry: sidecar/);
-  for (const relativePath of ["package.json", "sidecar/package.json", "shared/note-logic/package.json"]) {
+  assert.match(result.stderr, /missing workspace entry: shared\/note-logic/);
+  for (const relativePath of ["package.json", "shared/note-logic/package.json"]) {
     const pkg = JSON.parse(await readFile(path.join(root, relativePath), "utf8"));
     assert.equal(pkg.version, "0.1.0");
   }

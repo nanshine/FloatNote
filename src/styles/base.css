@@ -44,13 +44,18 @@ select {
   font: inherit;
 }
 
-/* Global focus ring — fixes the keyboard-a11y gap. Components must NOT override
-   `outline` (they may set `border-radius: inherit` only). */
-:where(button, a, input, select, textarea, [tabindex]:not([tabindex="-1"])):focus-visible {
+/* Discrete controls keep one crisp keyboard-focus ring. Editing surfaces opt
+   into the quiet contract below because a full exterior halo competes with the
+   document and can be clipped by scrollports. */
+:where(button, a, input, select, textarea, [tabindex]:not([tabindex="-1"])):not([data-focus-style="quiet"]):focus-visible {
   outline: 2px solid var(--color-accent);
   outline-offset: 2px;
-  box-shadow: 0 0 0 4px var(--color-focus-ring);
   border-radius: inherit;
+}
+
+:where(input, textarea, [contenteditable="true"])[data-focus-style="quiet"]:focus-visible {
+  outline: none;
+  box-shadow: none;
 }
 
 /* Reduced motion — consolidated (previously declared ad-hoc in styles.css,

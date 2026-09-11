@@ -7,6 +7,14 @@ use tauri::{AppHandle, Emitter};
 /// reads → empty selection). Only one capture may run at a time.
 static CAPTURING: AtomicBool = AtomicBool::new(false);
 
+#[cfg(target_os = "windows")]
+static PENDING_COPY_KEY: std::sync::atomic::AtomicU16 = std::sync::atomic::AtomicU16::new(0);
+
+#[cfg(target_os = "windows")]
+pub(crate) fn is_pending_copy_key(key: u16) -> bool {
+    PENDING_COPY_KEY.load(Ordering::SeqCst) == key
+}
+
 pub struct CaptureGuard {
     _priv: (),
 }
@@ -48,6 +56,7 @@ fn log_line(msg: &str) {
 }
 
 pub fn run_capture(app: &AppHandle) {
+    crate::selection_worker::invalidate();
     let Some(target) = external_frontmost_target() else {
         return;
     };
@@ -84,17 +93,17 @@ pub fn run_capture(app: &AppHandle) {
 }
 
 /// macOS Accessibility trust check. Returns true if capture may proceed.
-/// On macOS, if untrusted, prompts once and emits `accessibility-needed` to
+/// On macOS, if untrusted, shows actionable guidance and emits `accessibility-needed` to
 /// the `main` window; returns false. Windows uses the clipboard path below and
 /// needs no separate accessibility permission.
 pub fn check_accessibility(app: &AppHandle) -> bool {
     #[cfg(target_os = "macos")]
     {
-        static PROMPTED: AtomicBool = AtomicBool::new(false);
         if !macos_accessibility_client::accessibility::application_is_trusted() {
             log_line("accessibility NOT trusted — cannot simulate Cmd+C");
-            if !PROMPTED.swap(true, Ordering::SeqCst) {
-                macos_accessibility_client::accessibility::application_is_trusted_with_prompt();
+            if let Some(window) = crate::windows::note_window(app) {
+                let _ = window.show();
+                let _ = window.set_focus();
             }
             let _ = app.emit_to("main", "accessibility-needed", ());
             return false;
@@ -125,10 +134,12 @@ pub struct CurrentSelection {
     pub method: SelectionMethod,
 }
 
+#[cfg(any(target_os = "macos", test))]
 fn normalized(text: &str) -> String {
     text.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
+#[cfg(any(target_os = "macos", test))]
 fn merge_html(mut ax: CurrentSelection, copied: Option<CurrentSelection>) -> CurrentSelection {
     if let Some(copied) = copied {
         if normalized(&ax.text) == normalized(&copied.text) {
@@ -136,6 +147,19 @@ fn merge_html(mut ax: CurrentSelection, copied: Option<CurrentSelection>) -> Cur
         }
     }
     ax
+}
+
+#[cfg(any(target_os = "macos", test))]
+fn enrich_if_requested(
+    ax: CurrentSelection,
+    rich_text: bool,
+    copy: impl FnOnce() -> Option<CurrentSelection>,
+) -> CurrentSelection {
+    if rich_text {
+        merge_html(ax, copy())
+    } else {
+        ax
+    }
 }
 
 #[cfg(target_os = "macos")]
@@ -215,7 +239,16 @@ mod pasteboard {
     }
 
     pub fn copy_selection(pid: i32) -> Option<CurrentSelection> {
-        if crate::source::frontmost_pid() != Some(pid) {
+        copy_selection_with_foreground(pid, pid)
+    }
+
+    pub(super) fn copy_selection_with_foreground(
+        pid: i32,
+        foreground_pid: i32,
+    ) -> Option<CurrentSelection> {
+        if pid == std::process::id() as i32
+            || crate::source::frontmost_pid() != Some(foreground_pid)
+        {
             return None;
         }
         let board = unsafe { NSPasteboard::generalPasteboard() };
@@ -232,7 +265,7 @@ mod pasteboard {
             restore(&board, saved);
             return None;
         }
-        if crate::source::frontmost_pid() != Some(pid) {
+        if crate::source::frontmost_pid() != Some(foreground_pid) {
             restore(&board, saved);
             return None;
         }
@@ -266,9 +299,20 @@ pub(crate) fn capture_current_selection_for_target(
     app: &AppHandle,
     target: crate::source::ForegroundTarget,
 ) -> Option<CurrentSelection> {
+    capture_selection(app, target, None)
+}
+
+pub(crate) fn capture_selection(
+    app: &AppHandle,
+    target: crate::source::ForegroundTarget,
+    automatic: Option<crate::selection_worker::Request>,
+) -> Option<CurrentSelection> {
     #[cfg(not(target_os = "windows"))]
     let _ = app;
-    if crate::source::foreground_target() != Some(target) {
+    if !is_external_frontmost_process(Some(target.pid), std::process::id() as i32)
+        || crate::source::foreground_target() != Some(target)
+        || automatic.is_some_and(|request| !request.is_current())
+    {
         return None;
     }
     let pid = target.pid;
@@ -281,9 +325,14 @@ pub(crate) fn capture_current_selection_for_target(
             method: SelectionMethod::Accessibility,
         };
         #[cfg(target_os = "macos")]
-        return Some(merge_html(ax, pasteboard::copy_selection(pid)));
+        return Some(enrich_if_requested(ax, automatic.is_none(), || {
+            pasteboard::copy_selection(pid)
+        }));
         #[cfg(not(target_os = "macos"))]
         return Some(ax);
+    }
+    if automatic.is_some_and(|request| !request.allow_clipboard || !request.is_current()) {
+        return None;
     }
     #[cfg(target_os = "macos")]
     return pasteboard::copy_selection(pid);
@@ -291,6 +340,42 @@ pub(crate) fn capture_current_selection_for_target(
     return windows_capture::copy_selection(app, target);
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     None
+}
+
+/// Explicit confirmation may enrich a passive AX capture, never replace its text.
+/// If focus or selection has moved, keep the cached plain text.
+pub(crate) fn deferred_html(
+    app: &AppHandle,
+    target: crate::source::ForegroundTarget,
+    text: &str,
+) -> Option<String> {
+    #[cfg(target_os = "macos")]
+    {
+        let _guard = CaptureGuard::try_enter()?;
+        use tauri::Manager;
+        let foreground = crate::source::foreground_target()?;
+        let popup_is_key = foreground.pid == std::process::id() as i32
+            && app
+                .get_webview_window("selection-popup")
+                .is_some_and(|window| window.is_focused().unwrap_or(false));
+        if target.pid == std::process::id() as i32 || (foreground != target && !popup_is_key) {
+            return None;
+        }
+        let selected = crate::selection_probe::selected_text_for_pid(target.pid)?;
+        if selected.trim() != text.trim() {
+            return None;
+        }
+        let copied = pasteboard::copy_selection_with_foreground(target.pid, foreground.pid)?;
+        if normalized(text) != normalized(&copied.text) {
+            return None;
+        }
+        copied.html
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (app, target, text);
+        None
+    }
 }
 
 #[cfg(target_os = "windows")]
@@ -679,6 +764,14 @@ mod windows_capture {
     /// the clipboard actually changes. Returns false when the key was not sent
     /// or the target app did not copy anything.
     fn try_copy_and_wait(vk: u16) -> bool {
+        struct PendingKey;
+        impl Drop for PendingKey {
+            fn drop(&mut self) {
+                PENDING_COPY_KEY.store(0, Ordering::SeqCst);
+            }
+        }
+        PENDING_COPY_KEY.store(vk, Ordering::SeqCst);
+        let _pending_key = PendingKey;
         let before = unsafe { GetClipboardSequenceNumber() };
         if !send_copy(vk) {
             return false;
@@ -698,7 +791,18 @@ mod windows_capture {
         app: &AppHandle,
         target: crate::source::ForegroundTarget,
     ) -> Option<CurrentSelection> {
-        if target.window_id.is_none() || crate::source::foreground_target() != Some(target) {
+        use windows_sys::Win32::{
+            System::Threading::GetCurrentThreadId,
+            UI::WindowsAndMessaging::GetWindowThreadProcessId,
+        };
+        if target.pid == std::process::id() as i32
+            || target.window_id.is_none()
+            || crate::source::foreground_target() != Some(target)
+            || unsafe {
+                GetWindowThreadProcessId(target.window_id? as _, std::ptr::null_mut())
+                    == GetCurrentThreadId()
+            }
+        {
             return None;
         }
         // Snapshot before anything else; abandoning here leaves the clipboard
@@ -799,6 +903,22 @@ mod windows_capture {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn passive_ax_success_never_invokes_the_clipboard() {
+        let selected = super::CurrentSelection {
+            text: "selected".into(),
+            html: None,
+            source_pid: 42,
+            anchor: None,
+            method: super::SelectionMethod::Accessibility,
+        };
+        let result = super::enrich_if_requested(selected, false, || {
+            panic!("automatic AX success must not copy")
+        });
+        assert_eq!(result.text, "selected");
+        assert!(result.html.is_none());
+    }
+
     use super::*;
 
     #[test]

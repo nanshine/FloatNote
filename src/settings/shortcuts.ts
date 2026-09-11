@@ -1,9 +1,10 @@
+import { mountCapturePermissionSettings } from "./capture-permission";
 import { invoke } from "@tauri-apps/api/core";
 import { findShortcutConflicts, formatComboHtml, WINDOW_SHORTCUT_DEFAULTS, WINDOW_SHORTCUT_IDS, WINDOW_SHORTCUT_LABELS, type ShortcutFieldId, type WindowShortcutId } from "../shared/shortcuts";
 import { KeyRecorder } from "./key-recorder";
 import type { Config } from "./types";
 
-export function mountShortcutSettings(root: HTMLElement, config: Config): void {
+export function mountShortcutSettings(root: HTMLElement, config: Config): () => void {
   root.innerHTML = `<section class="settings-section" aria-labelledby="global-shortcuts-title"><h2 id="global-shortcuts-title">系统快捷键</h2><div class="settings-card">
     ${shortcutMarkup("capture", "划词采集", config.shortcut_capture)}
     ${shortcutMarkup("toggle", "显示 / 隐藏窗口", config.shortcut_toggle)}
@@ -11,10 +12,12 @@ export function mountShortcutSettings(root: HTMLElement, config: Config): void {
   <section class="settings-section" aria-labelledby="popup-trigger-title"><h2 id="popup-trigger-title">选中文字弹窗</h2><div class="settings-card">
     <div class="settings-line"><div><label for="auto-popup-mode"><strong>触发方式</strong></label><small>选中文字后自动弹出，或手动按快捷键唤出</small></div><span class="select-wrap"><select id="auto-popup-mode" class="fn-control"><option value="auto">自动弹出</option><option value="shortcut">快捷键</option><option value="off">关闭</option></select></span></div>
     <div id="popup-shortcut-row" class="popup-shortcut-row" ${config.auto_popup_mode === "shortcut" ? "" : "hidden"}>${shortcutMarkup("popup", "打开选中文字弹窗", config.shortcut_popup)}</div>
+    <div id="capture-permission-settings" hidden></div>
     <p id="popup-mode-error" class="settings-inline-error" role="alert"></p>
   </div></section>
   <section class="settings-section" aria-labelledby="window-shortcuts-title"><h2 id="window-shortcuts-title">窗口快捷键</h2><div class="settings-card">${WINDOW_SHORTCUT_IDS.map((id) => shortcutMarkup(id, WINDOW_SHORTCUT_LABELS[id], config.window_shortcuts?.[id] ?? WINDOW_SHORTCUT_DEFAULTS[id])).join("")}</div></section>`;
 
+  const permission = mountCapturePermissionSettings(root.querySelector<HTMLElement>("#capture-permission-settings")!);
   const recorders = {} as Record<ShortcutFieldId, KeyRecorder>;
   const globalIds = ["capture", "toggle", "popup"] as const;
   const readGlobals = () => ({ capture: recorders.capture.value, toggle: recorders.toggle.value, popup: recorders.popup.value });
@@ -56,12 +59,14 @@ export function mountShortcutSettings(root: HTMLElement, config: Config): void {
     try {
       await invoke("set_auto_popup_mode", { mode: mode.value });
       config.auto_popup_mode = mode.value;
+      await permission.refresh();
     } catch (reason) {
       mode.value = previous;
       popupRow.hidden = previous !== "shortcut";
       modeError.textContent = `无法更新触发方式：${String(reason)}`;
     }
   });
+  return () => permission.dispose();
 }
 
 function shortcutMarkup(id: ShortcutFieldId, label: string, value: string): string {

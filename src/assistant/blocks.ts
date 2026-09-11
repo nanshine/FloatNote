@@ -1,7 +1,7 @@
 import { processGroupSummary, type Block, type ChatMessage } from "./render";
 import { applyStreamingProjection, decorateCodeBlocks, renderBlock, renderMessage, startUserMessageEdit, type AssistantOutputMode } from "./render/view";
 import { updateActionCard } from "./action-card";
-import { fillMarkdown } from "./markdown";
+import { fillMarkdown } from "../shared/markdown/render";
 
 /**
  * 定向增量渲染（消灭闪烁）。

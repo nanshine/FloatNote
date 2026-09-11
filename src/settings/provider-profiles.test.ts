@@ -8,12 +8,11 @@ import {
 } from "./provider-profiles";
 
 describe("AI provider profiles", () => {
-  it("offers exactly the six fixed providers in product order", () => {
+  it("offers exactly the five fixed providers in product order", () => {
     expect(PROVIDER_PROFILES.map(({ id, label }) => ({ id, label }))).toEqual([
       { id: "openai", label: "OpenAI API" },
       { id: "deepseek", label: "DeepSeek API" },
       { id: "anthropic", label: "Anthropic API" },
-      { id: "bailian", label: "阿里云百炼 API" },
       { id: "kimi", label: "Kimi API" },
       { id: "zhipu", label: "智谱 API" },
     ]);
@@ -23,13 +22,13 @@ describe("AI provider profiles", () => {
     const settings = createEmptyAiSettings();
     expect(settings.activeProviderId).toBeNull();
     expect(Object.values(settings.providers)).toEqual(
-      Array.from({ length: 6 }, () => ({ apiKey: "", model: "" })),
+      Array.from({ length: 5 }, () => ({ apiKey: "", model: "" })),
     );
   });
 
-  it("only exposes Base URL for OpenAI, Anthropic, and Bailian", () => {
+  it("only exposes Base URL for OpenAI and Anthropic", () => {
     expect(PROVIDER_PROFILES.filter((profile) => profile.allowsBaseUrl).map((profile) => profile.id))
-      .toEqual(["openai", "anthropic", "bailian"]);
+      .toEqual(["openai", "anthropic"]);
   });
 
   it("requires a trimmed API key and model", () => {

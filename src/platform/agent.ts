@@ -15,7 +15,6 @@ export type ToolCategory =
   | "other";
 
 export type AgentEvent =
-  | { type: "ready" }
   | { type: "session_opened"; conversationId: string; sessionFile: string; messages: ChatDisplayMessage[] }
   | { type: "session_synced"; conversationId: string; sessionFile: string; messages: ChatDisplayMessage[] }
   | { type: "delta"; requestId: string; conversationId: string; text: string }

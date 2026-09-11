@@ -66,7 +66,7 @@
 | --- | --- |
 | 基础能力 | 读取与检索项目内容、创建与修改文章、更新行动清单、添加与管理标签、搜索与读取网页 |
 | 内置 Skills | 问到真懂、梳理材料、下一步、写出所想 |
-| AI 提供商 | OpenAI、Anthropic、DeepSeek、Kimi、智谱、阿里云百炼 |
+| AI 提供商 | OpenAI（支持自定义兼容地址）、Anthropic、DeepSeek、Kimi、智谱 |
 
 ## 笔记直接保存在本地
 
@@ -109,22 +109,14 @@
 - **Intel Mac**：[直接下载 `.dmg`](https://github.com/NanshineLoong/FloatNote/releases/download/v0.1.0/FloatNote_0.1.0_x86_64.dmg)
 - **所有版本**：[查看 GitHub Releases](https://github.com/NanshineLoong/FloatNote/releases)
 - **Windows**：正在准备中。
-- **首次使用**：划词采集需要授予系统辅助功能权限；FloatNote 会在需要时引导你完成设置。
 
-## 从源码运行
+安装后打开 FloatNote，跟随新手引导创建第一个项目，试着采集一段文字，再写下自己的想法。你可以随时关闭引导，之后在「设置 → 通用 → 新手引导」重新开始。
 
-需要 Node.js 22.19 或更高版本、Rust stable，以及 macOS 或 Windows 对应的 Tauri 开发环境。
-
-```bash
-npm install
-npm run tauri dev
-```
-
-更多信息可查看[开发环境](docs/development/setup.md)、[测试说明](docs/development/testing.md)和[架构总览](docs/architecture/overview.md)。
+在 Mac 上使用划词采集时，请按应用提示开启辅助功能权限；想使用 AI 助手时，再到「设置 → AI」配置服务提供商即可。
 
 ## 参与项目
 
-欢迎反馈问题、提出功能建议或提交改进。开始前请先阅读[贡献指南](CONTRIBUTING.md)，了解开发环境、提交规范与验证流程。
+欢迎反馈问题、提出功能建议或提交改进。开始前请先阅读[贡献指南](CONTRIBUTING.md)，了解开发环境、提交规范与验证流程；从源码运行请查看[开发环境说明](docs/development/setup.md)。
 
 ## 许可证
 

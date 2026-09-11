@@ -5,8 +5,8 @@ import { resolve } from "node:path";
 const root = process.cwd();
 
 /** CSS files that should consume design tokens, not raw accent hex literals.
- * `editor.ts` CodeMirror highlighting is intentionally excluded (code-syntax
- * palette is a separate concern). `primitives.css` defines the ramp itself. */
+ * Nested code-editor highlighting is a separate concern. `primitives.css`
+ * defines the ramp itself. */
 const tokenizedCss = [
   "src/styles.css",
   "src/assistant/styles.css",
@@ -75,6 +75,16 @@ describe("design tokens", () => {
     expect(s).toMatch(
       /@media \(prefers-color-scheme: dark\)[\s\S]*--color-accent:\s*var\(--indigo-400\)/,
     );
+  });
+
+  it("uses a single focus ring and lets text-editing surfaces opt into quiet focus", () => {
+    const base = readFileSync(resolve(root, "src/styles/base.css"), "utf8");
+    const globalFocus = base.match(/:where\(button,[\s\S]*?\):not\(\[data-focus-style="quiet"\]\):focus-visible\s*\{([^}]*)\}/)?.[1] ?? "";
+    const quietFocus = base.match(/\[data-focus-style="quiet"\]:focus-visible\s*\{([^}]*)\}/)?.[1] ?? "";
+    expect(globalFocus).toMatch(/outline:\s*2px solid var\(--color-accent\)/);
+    expect(globalFocus).not.toMatch(/box-shadow/);
+    expect(quietFocus).toMatch(/outline:\s*none/);
+    expect(quietFocus).toMatch(/box-shadow:\s*none/);
   });
 
   it("exposes the danger semantic tokens (mirroring accent, light + dark)", () => {
@@ -163,7 +173,9 @@ describe("design tokens", () => {
   it("aggregates the four token layers in index.css (import-only)", () => {
     const idx = readFileSync(resolve(root, "src/styles/index.css"), "utf8");
     // No bare rules — only @import (CSS spec requires @import first).
-    expect(idx.replace(/\/\*[\s\S]*?\*\//g, "").trim()).not.toMatch(/^[^@]/m);
+    // 归一化 CRLF：Windows 检出会把 \r 留成行首字符，干扰 ^ 锚点判定。
+    const lines = idx.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\r\n/g, "\n").trim();
+    expect(lines).not.toMatch(/^[^@]/m);
     for (const layer of ["primitives", "semantic", "base", "components"]) {
       expect(idx).toContain(`@import "./${layer}.css"`);
     }

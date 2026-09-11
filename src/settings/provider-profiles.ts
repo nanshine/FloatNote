@@ -2,7 +2,6 @@ export type AiProviderId =
   | "openai"
   | "deepseek"
   | "anthropic"
-  | "bailian"
   | "kimi"
   | "zhipu";
 
@@ -30,7 +29,6 @@ export const PROVIDER_PROFILES: readonly ProviderProfile[] = [
   { id: "openai", label: "OpenAI API", mark: "AI", allowsBaseUrl: true },
   { id: "deepseek", label: "DeepSeek API", mark: "DS", allowsBaseUrl: false },
   { id: "anthropic", label: "Anthropic API", mark: "AN", allowsBaseUrl: true },
-  { id: "bailian", label: "阿里云百炼 API", mark: "百", allowsBaseUrl: true },
   { id: "kimi", label: "Kimi API", mark: "K", allowsBaseUrl: false },
   { id: "zhipu", label: "智谱 API", mark: "智", allowsBaseUrl: false },
 ];

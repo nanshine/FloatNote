@@ -1,7 +1,8 @@
 # shared/note-logic — shared pure note logic
 
-Workspace package `@floatnote/note-logic`, consumed by the frontend
-(`src/`) and the sidecar (`sidecar/`). Pure TypeScript, no DOM, no I/O.
+Workspace package `@floatnote/note-logic`, consumed by the frontend (`src/`).
+Pure TypeScript, no DOM and no I/O. The Rust Agent owns a narrowly ported codec
+subset with cross-language parity tests.
 Barrel: `src/index.ts`.
 
 ## Modules
@@ -14,11 +15,8 @@ Barrel: `src/index.ts`.
 - `annotations/matching.ts` — exact text plus prefix/suffix disambiguation.
 - `tags/model.ts` — the shared `TagDef` DTO only; persistence belongs to the codec.
 - `tags/palette.ts` — canonical tag color `PALETTE` (8 swatches) +
-  `freeColors(used)`. Shared so the agent's tag tools see the same colors
-  the user sees in the picker.
-- `tasks.ts` was migrated to `src/note/tasks.ts` (frontend-only); `matching.ts`
-  to `sidecar/src/matching.ts` (sidecar-only). This package now holds only
-  logic used by BOTH consumers. The former Inbox top-level block parser and
+  `freeColors(used)`. The Rust Agent mirrors this fixed palette.
+- `tasks.ts` was migrated to `src/note/tasks.ts` (frontend-only). The former Inbox top-level block parser and
   block-scoped tag APIs were removed.
 
 Tests: `*.test.ts` next to each module. The only runtime dependency is the

@@ -7,7 +7,7 @@ import { buildActionCard, updateActionCard } from "./action-card";
 import type { ActionBlock } from "./render/state";
 
 describe("action cards", () => {
-  it("renders distinct semantic icons from the sidecar category", () => {
+  it("renders distinct semantic icons from the agent category", () => {
     const categories = [
       "skill",
       "document_read",

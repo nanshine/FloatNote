@@ -13,8 +13,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  web-and-sidecar:
-    name: Frontend, shared, and sidecar
+  web:
+    name: Frontend and shared logic
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -46,8 +46,6 @@ jobs:
         with:
           workspaces: src-tauri
       - run: npm ci
-      - name: Prepare Tauri sidecar
-        run: npm run package:sidecar
       - name: Test Rust library
         working-directory: src-tauri
         run: cargo test --lib

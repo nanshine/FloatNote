@@ -1,6 +1,33 @@
 #[cfg(test)]
 use crate::selection_intent::AxTargetKind;
 
+/// UIA inserts object markers (and Chromium inserts neighboring line breaks)
+/// where native copy omits embedded images. Preserve other paragraph breaks.
+#[cfg(any(target_os = "windows", test))]
+fn clean_uia_text(text: &str) -> String {
+    let mut result = String::new();
+    let mut rest = text;
+    while let Some(index) = rest.find('\u{fffc}') {
+        result.push_str(&rest[..index]);
+        if result.ends_with('\n') {
+            result.pop();
+            if result.ends_with('\r') {
+                result.pop();
+            }
+        } else if result.ends_with('\r') {
+            result.pop();
+        }
+        rest = &rest[index + '\u{fffc}'.len_utf8()..];
+        rest = rest
+            .strip_prefix("\r\n")
+            .or_else(|| rest.strip_prefix('\n'))
+            .or_else(|| rest.strip_prefix('\r'))
+            .unwrap_or(rest);
+    }
+    result.push_str(rest);
+    result.trim().to_string()
+}
+
 #[cfg(test)]
 fn first_selection(values: impl IntoIterator<Item = Option<String>>) -> Option<String> {
     values
@@ -36,6 +63,7 @@ mod macos {
     #[link(name = "ApplicationServices", kind = "framework")]
     extern "C" {
         fn AXUIElementCreateApplication(pid: i32) -> *mut c_void;
+        fn AXUIElementGetTypeID() -> usize;
         fn AXUIElementCopyAttributeValue(
             element: *mut c_void,
             attribute: *const c_void,
@@ -67,6 +95,7 @@ mod macos {
             buffer_size: isize,
             encoding: u32,
         ) -> u8;
+        fn CFArrayGetTypeID() -> usize;
         fn CFArrayGetCount(value: *const c_void) -> isize;
         fn CFArrayGetValueAtIndex(value: *const c_void, index: isize) -> *const c_void;
         static kCFBooleanTrue: *const c_void;
@@ -112,6 +141,10 @@ mod macos {
     }
 
     fn copy_attribute(element: *mut c_void, attribute: &str) -> Option<OwnedCf> {
+        if element.is_null() || unsafe { CFGetTypeID(element) } != unsafe { AXUIElementGetTypeID() }
+        {
+            return None;
+        }
         let attribute = CfString::new(attribute)?;
         let mut value = std::ptr::null_mut();
         let result = unsafe { AXUIElementCopyAttributeValue(element, attribute.0, &mut value) };
@@ -147,9 +180,12 @@ mod macos {
         copy_attribute(element, "AXParent")
     }
 
-    fn selected_text_from(element: OwnedCf) -> Option<String> {
+    fn selected_text_from(element: OwnedCf, deadline: std::time::Instant) -> Option<String> {
         let mut current = Some(element);
         for _ in 0..MAX_ANCESTORS {
+            if std::time::Instant::now() >= deadline {
+                break;
+            }
             let Some(node) = current.take() else {
                 break;
             };
@@ -170,17 +206,23 @@ mod macos {
     }
 
     fn selected_text_once(pid: i32) -> Option<String> {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_millis(400);
         let app = OwnedCf::new(unsafe { AXUIElementCreateApplication(pid) })?;
-        unsafe { AXUIElementSetMessagingTimeout(app.ptr(), 0.25) };
+        unsafe { AXUIElementSetMessagingTimeout(app.ptr(), 0.1) };
         let focused = copy_attribute(app.ptr(), "AXFocusedUIElement")?;
 
         if let Some(text) = selected_text_direct(focused.ptr()) {
             return Some(text.trim().to_string());
         }
 
-        if let Some(children) = copy_attribute(focused.ptr(), "AXChildren") {
+        if let Some(children) = copy_attribute(focused.ptr(), "AXChildren")
+            .filter(|value| unsafe { CFGetTypeID(value.ptr()) == CFArrayGetTypeID() })
+        {
             let count = unsafe { CFArrayGetCount(children.ptr()) };
-            for index in 0..count {
+            for index in 0..count.min(64) {
+                if std::time::Instant::now() >= deadline {
+                    break;
+                }
                 let child = unsafe { CFArrayGetValueAtIndex(children.ptr(), index) } as *mut c_void;
                 if let Some(text) = selected_text_direct(child) {
                     return Some(text.trim().to_string());
@@ -188,18 +230,27 @@ mod macos {
             }
         }
 
-        selected_text_from(focused).map(|text| text.trim().to_string())
+        selected_text_from(focused, deadline).map(|text| text.trim().to_string())
     }
 
     pub fn current_selected_text(pid: i32) -> Option<String> {
         if crate::source::frontmost_pid() != Some(pid) {
             return None;
         }
+        selected_text_for_pid(pid).filter(|_| crate::source::frontmost_pid() == Some(pid))
+    }
+
+    /// Explicit popup confirmation can query its cached external target after
+    /// the popup becomes key. This never reads FloatNote's own accessibility tree.
+    pub(crate) fn selected_text_for_pid(pid: i32) -> Option<String> {
+        if pid == std::process::id() as i32 {
+            return None;
+        }
         if let Some(text) = selected_text_once(pid) {
             return Some(text);
         }
-
         let app = OwnedCf::new(unsafe { AXUIElementCreateApplication(pid) })?;
+        unsafe { AXUIElementSetMessagingTimeout(app.ptr(), 0.1) };
         for attribute in ["AXEnhancedUserInterface", "AXManualAccessibility"] {
             if let Some(attribute) = CfString::new(attribute) {
                 unsafe {
@@ -213,8 +264,16 @@ mod macos {
 
 #[cfg(target_os = "macos")]
 pub use macos::current_selected_text;
+#[cfg(target_os = "macos")]
+pub(crate) use macos::selected_text_for_pid;
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(target_os = "windows")]
+#[path = "selection_probe/windows.rs"]
+mod windows_uia;
+#[cfg(target_os = "windows")]
+pub use windows_uia::current_selected_text;
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 pub fn current_selected_text(_pid: i32) -> Option<String> {
     None
 }
@@ -223,6 +282,17 @@ pub fn current_selected_text(_pid: i32) -> Option<String> {
 mod tests {
     use super::*;
     use crate::selection_intent::AxTargetKind;
+
+    #[test]
+    fn object_markers_remove_only_their_neighboring_line_breaks() {
+        assert_eq!(
+            clean_uia_text("before\n\u{fffc}\nafter\n\nparagraph"),
+            "beforeafter\n\nparagraph"
+        );
+        assert_eq!(clean_uia_text("前\r\n\u{fffc}\r\n后"), "前后");
+        assert_eq!(clean_uia_text("first\nsecond"), "first\nsecond");
+        assert_eq!(clean_uia_text("\u{fffc}"), "");
+    }
 
     #[test]
     fn text_roles_are_allowed() {

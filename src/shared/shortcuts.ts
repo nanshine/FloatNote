@@ -163,7 +163,7 @@ interface ReservedEntry {
 }
 
 const RAW_RESERVED: ReservedEntry[] = [
-  // CodeMirror defaultKeymap + historyKeymap 占用（实测 editor.ts:50）
+  // ProseMirror/嵌套代码编辑器默认键位占用；应用级保留标准编辑快捷键。
   { combo: "Mod+A", reason: "与编辑器「全选」相同，无法使用" },
   { combo: "Mod+I", reason: "该组合键已被编辑器占用" },
   { combo: "Mod+U", reason: "与编辑器「选区撤销」相同，无法使用" },

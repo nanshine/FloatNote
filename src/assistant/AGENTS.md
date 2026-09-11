@@ -1,6 +1,6 @@
 # src/assistant — AI assistant UI
 
-In-window AI tutor chat surface. Streams sidecar events (`agent://event`)
+In-window AI tutor chat surface. Streams Rust Agent events (`agent://event`)
 into a reconciled message list with incremental DOM updates.
 
 ## Module map
@@ -33,18 +33,19 @@ into a reconciled message list with incremental DOM updates.
   row model and context folding for both layouts.
 - `permission-allow-button.ts` — normal/split approval control. Snapshot mode
   is an immediate menu action, not a stored select value.
-- `markdown.ts` — compatibility re-export of the safe GFM + KaTeX renderer in
-  `src/shared/markdown/render.ts`. Assistant and user bubbles plus permission
-  previews all use the shared `.fn-markdown` surface. Inline `$...$` and
+- Assistant and user bubbles plus permission previews import the safe Remark
+  GFM + KaTeX renderer directly from `src/shared/markdown/render.ts` and use the
+  shared `.fn-markdown` surface. Inline `$...$` and
   own-line `$$...$$` display formulas share the guarded implementation in
   `src/shared/markdown/math.ts`; never import note
   internals for read-only rendering.
-- `input/` — the CM6 assistant composer: atomic file/skill chips, unified
+- `input/structured-composer.ts` — the compact Milkdown assistant composer: atomic
+  ProseMirror file/skill nodes, unified
   caret-following candidate popover, structured clipboard/send payload, and
   the body-level focused-paper portal. Its modal lifecycle is shared with the
   permission review paper through `src/shared/ui/modal-paper.ts`. The portal moves the existing input
   host into its modal paper and restores it to the current dock; it must never
-  create a second `EditorView`. Enter submits in compact mode but inserts a
+  create a second editor state. Enter submits in compact mode but inserts a
   newline in the focused paper, where only the send button submits. Composer
   submission is asynchronous: clear and
   collapse only after `send` returns a request id, while failures retain the
@@ -52,12 +53,22 @@ into a reconciled message list with incremental DOM updates.
   draft wins and is not cleared by the older completion. `mention-picker.ts`
   and `skill-picker.ts` remain the data-type sources
   for the composer; their legacy textarea menus are no longer mounted by
-  `assistant.ts`. The editor uses the shared GFM language contract and
-  lightweight source-preserving decorations from `src/shared/markdown/editor.ts`;
-  tables and task lists stay editable Markdown rather than becoming widgets.
+  `assistant.ts`. Submission serializes canonical Markdown while extracting
+  reference nodes in document order; hidden reference tokens exist only at the
+  compatibility clipboard/payload boundary. `input/composer.ts` and its CM
+  extensions are legacy test/compatibility modules and are not production-mounted.
+- AI readiness comes from `src/platform/ai-readiness.ts`; setup can be dismissed,
+  but submission rechecks the real backend state and restores the card without
+  clearing drafts. Preview overrides never authorize sending. New conversation
+  creates a local draft; persistent sessions are created on first valid send.
+- Empty conversations render setup cards inside the real message scrollport.
+  `starters.ts` owns opaque suggestion rows with transparent gaps immediately above the dock,
+  outside the scrollport, with a current-conversation dismissal (reset when starting a new conversation) and a persistent
+  localStorage opt-out (`floatnote.assistant.hideStarters`). Starter actions may fill the composer or open its file/Skill picker,
+  but never send automatically or replace a non-empty draft.
 - `styles.css` — assistant card/bubble/diff/picker styling.
 
-Tool rows use the sidecar-provided safe `label`, semantic `category`, and stable
+Tool rows use the Rust Agent-provided safe `label`, semantic `category`, and stable
 `callId`; `action-card.ts` maps the category to a fixed inline SVG and keeps a
 tool-name fallback only for older events. Never render raw tool arguments or
 result bodies. Compact mode is the default and owns the streaming cursor.

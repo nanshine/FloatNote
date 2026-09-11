@@ -91,6 +91,24 @@ impl ChatHistoryStore {
         Ok(Self::new_at(floatnote.join("chat-history")))
     }
 
+    pub(crate) fn session_directory(&self) -> PathBuf {
+        self.session_dir()
+    }
+
+    pub(crate) fn validate_session_file(&self, candidate: &Path) -> io::Result<PathBuf> {
+        let root = self.session_dir().canonicalize()?;
+        let file = candidate.canonicalize()?;
+        if file.parent() != Some(root.as_path())
+            || file.extension().and_then(|ext| ext.to_str()) != Some("jsonl")
+        {
+            return Err(io::Error::new(
+                io::ErrorKind::PermissionDenied,
+                "session file is outside FloatNote chat history",
+            ));
+        }
+        Ok(file)
+    }
+
     pub fn new_at(root: PathBuf) -> Self {
         Self { root }
     }
@@ -947,6 +965,25 @@ mod tests {
 
         assert!(!std::path::Path::new(&entry.session_file).exists());
         assert!(store.open(&entry.id).unwrap().is_none());
+    }
+
+    #[test]
+    fn session_validation_rejects_files_outside_the_store() {
+        let dir = tempdir();
+        let store = ChatHistoryStore::new_at(dir.path().join("chat-history"));
+        let entry = store
+            .create(ChatScopeType::Project, "/tmp/project", "Project")
+            .unwrap();
+        std::fs::write(&entry.session_file, "{}\n").unwrap();
+        let outside = dir.path().join("outside.jsonl");
+        std::fs::write(&outside, "{}\n").unwrap();
+        assert!(store
+            .validate_session_file(std::path::Path::new(&entry.session_file))
+            .is_ok());
+        assert_eq!(
+            store.validate_session_file(&outside).unwrap_err().kind(),
+            std::io::ErrorKind::PermissionDenied
+        );
     }
 
     use crate::testutil::tempdir;

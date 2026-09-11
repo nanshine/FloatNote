@@ -1,33 +1,17 @@
+import { startUpdates, isPreparingUpdate } from "./updates";
+import { captureQuote, type QuotePayload } from "./capture";
 import "@phosphor-icons/web/regular";
 import "../assistant/styles.css";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
-import { onFileChanged, onNoteUpdated, type NoteUpdated } from "./agent";
-import { EditorView, placeholder } from "@codemirror/view";
-import { Transaction } from "@codemirror/state";
+import { onFileChanged, onNoteUpdated, type NoteUpdated } from "../platform/agent";
 import { decodeInbox } from "@floatnote/note-logic";
-import {
-  createEditor,
-  replaceDocWithoutHistory,
-  requestEditorLayout,
-  setDoc,
-  setEditorReadOnly,
-} from "./editor";
-import { mountTagBar } from "./tags/bar";
 import { isImeComposing } from "../shared/keyboard";
+import { createImeAnchorRefresher } from "../shared/ime-anchor";
 import { showToast } from "../shared/toast";
 import { createIcon } from "../shared/ui/icon";
 import { createMenu, type MenuHandle } from "../shared/ui/menu";
-import { activeTagFilter, tagFilter, setTagFilter } from "./tags/filter";
-import { annotationDecorations } from "./annotations/decoration";
-import { annotationContextMenu } from "./annotations/menu";
-import {
-  inboxMetadataExtension,
-  replaceInboxMetadata,
-} from "./annotations/state";
-import { mountAnnotationProjection } from "./annotations/projection";
-import { annotationAutosave } from "./annotations/autosave";
 import { createLayoutController } from "./layout-controller";
 import { createPieceHeader } from "./piece-switcher";
 import { actionTargetForTransition, createTasksPanel } from "./tasks-panel";
@@ -68,8 +52,8 @@ import {
   type ProjectEntry,
 } from "./notes-state";
 import { parentDir, pushRecent, removeFromRecent } from "./recent-projects";
-import { initScrollbar } from "./scrollbar";
-import { renderEmptyState } from "./empty-state";
+import { initScrollbar } from "../shared/ui/scrollbar";
+import { renderEmptyState } from "../shared/ui/empty-state";
 import {
   resolveBootstrap,
   resolveOpenProject,
@@ -82,6 +66,7 @@ import {
   setTasksToggle,
   setViewSeg,
 } from "./topbar";
+import { mountResizeEdges } from "../shared/ui/window-caption";
 import { canSplit } from "./split";
 import { buildBindings, installShortcuts, type ShortcutActions } from "./shortcuts";
 import { WINDOW_SHORTCUT_DEFAULTS, type WindowShortcutId } from "../shared/shortcuts";
@@ -94,7 +79,6 @@ import {
   snapshotNote,
 } from "./versions";
 import { createVersionPreviewState } from "./version-preview";
-import { attachQuoteCapture } from "./quote-capture";
 import { attachAutomationToasts } from "./automation-toasts";
 import { createProjectMenuRenderer, fileManagerRevealLabel } from "./project-menu-render";
 import { createAssistantController } from "./assistant-controller";
@@ -105,9 +89,17 @@ import {
   initializeEditorFontSize,
   resetEditorFontSize,
 } from "./font-size";
+import {
+  createStructuredMarkdownEditor,
+  type StructuredEditorCheckpoint,
+} from "../shared/markdown/structured-editor";
+import { createStructuredInbox } from "./structured-inbox";
+import { imageSrc } from "./image-fs";
+import { attachStructuredMedia } from "./structured-media";
+import { createOnboardingController, type OnboardingController } from "./onboarding";
 
 
-export function startNoteApp() {
+export async function startNoteApp() {
 initializeEditorFontSize();
 const app = document.querySelector<HTMLElement>("#app")!;
 app.innerHTML = `
@@ -117,14 +109,15 @@ app.innerHTML = `
     <div id="tag-bar-root"></div>
     <div id="piece-topbar-root"></div>
     <div id="left-col"></div>
-    <div id="text-col">
-      <div id="editor-root"></div>
-      <div id="annotation-projection-root" hidden></div>
+    <div id="text-col" class="note-column">
+      <div id="editor-root" class="note-scroll note-editor-host">
+        <div id="annotation-projection-root" hidden></div>
+      </div>
     </div>
-    <div id="piece-col">
-      <div id="piece-scroll">
+    <div id="piece-col" class="note-column">
+      <div id="piece-scroll" class="note-scroll">
         <div id="piece-doc-header"></div>
-        <div id="piece-editor-root"></div>
+        <div id="piece-editor-root" class="note-editor-host"></div>
       </div>
       <div id="piece-version-preview-root"></div>
       <div id="piece-empty-root"></div>
@@ -135,6 +128,7 @@ app.innerHTML = `
 `;
 
 const noteBody = document.querySelector<HTMLElement>("#note-body")!;
+const textCol = document.querySelector<HTMLElement>("#text-col")!;
 const assistantRegion = document.querySelector<HTMLElement>("#assistant-region")!;
 const bodyEmptyRoot = document.querySelector<HTMLElement>("#body-empty-root")!;
 const pieceEmptyRoot = document.querySelector<HTMLElement>("#piece-empty-root")!;
@@ -144,6 +138,7 @@ const DEFAULT_PIECE_TITLE = "未命名作品";
 const DEFAULT_DOCUMENT_TITLE = "未命名文档";
 
 const session = createNoteSession();
+let onboardingController: OnboardingController | null = null;
 
 /** 当前工作目录（隐式）：bootstrap 时从 config.working_dir 读取；项目新建时由后端
  * 自动回写，前端在此镜像。无工作目录时为空串——NO_PROJECT 空态的"新建项目"会弹
@@ -173,12 +168,12 @@ function renderWindowState(state: WindowState) {
       app.classList.add("state-no-project");
       setProjectLabel("");
       cleanupBodyEmpty = renderEmptyState(bodyEmptyRoot, {
-        icon: "✍️",
-        title: "欢迎来到 FloatNote",
-        hint: "还没有项目空间。新建一个项目开始写作，打开已有文件夹，或直接新建一篇独立文档。",
-        primary: { label: "新建项目", action: () => void createDefaultProject() },
-        secondary: { label: "新建文档", action: () => void createStandaloneDocument() },
-        tertiary: { label: "打开现有项目", action: () => void openExistingProjectFlow() },
+        icon: "pen-nib",
+        title: "把读到的变成学会的",
+        hint: "收集材料，写下观点，让 AI 陪你深入思考。",
+        primary: { label: "创建第一个项目", action: () => void createDefaultProject() },
+        secondary: { label: "打开已有项目", action: () => void openExistingProjectFlow() },
+        tertiary: { label: "只新建一篇文档", action: () => void createStandaloneDocument() },
       });
       break;
     case "PATH_ERROR":
@@ -186,7 +181,7 @@ function renderWindowState(state: WindowState) {
       app.classList.add("state-path-error");
       setProjectLabel("");
       cleanupBodyEmpty = renderEmptyState(bodyEmptyRoot, {
-        icon: "⚠️",
+        icon: "warning-circle",
         title: "读取失败",
         hint: state.error ?? "无法读取项目列表，请稍后重试。",
         primary: { label: "重试", action: () => void retryBootstrap() },
@@ -197,9 +192,8 @@ function renderWindowState(state: WindowState) {
       // 空态下无当前作品：清掉残留引用与面包屑/标题，避免上一个项目的作品名泄漏到新空态。
       session.currentPiece = null;
       pieceHeader?.setLabel("");
-      session.surface = "piece";
       cleanupPieceEmpty = renderEmptyState(pieceEmptyRoot, {
-        icon: "📝",
+        icon: "file-text",
         title: "这里还没有作品",
         hint: `在「${state.project.name}」里新建一篇开始写作。`,
         primary: { label: "新建作品", action: () => void createFirstPiece() },
@@ -231,45 +225,22 @@ let menuAnchor: HTMLElement | null = null;
 let applyingRemote = false;
 
 const editorRoot = document.querySelector<HTMLElement>("#editor-root")!;
-// Inbox 编辑器只持有 clean Markdown；标签、文本标注与 quote 来源 metadata 位于
-// CodeMirror StateField，保存快照时才编码回 `_inbox.md`。
-let tagBar: ReturnType<typeof mountTagBar> | null = null;
-let annotationProjection: ReturnType<typeof mountAnnotationProjection> | null = null;
-const editor = createEditor(
-  editorRoot,
-  () => {},
-  [
-    ...inboxMetadataExtension(),
-    annotationAutosave(
-      (snapshot) => {
-        if (session.currentInbox) scheduleSave(session.currentInbox.entry.path, snapshot);
-      },
-      () => !applyingRemote,
-    ),
-    annotationDecorations(),
-    annotationContextMenu(),
-    ...tagFilter(),
-    placeholder("在这里写点什么…"),
-    EditorView.updateListener.of((u) => {
-      const metadataChanged = u.transactions.some((transaction) => (
-        transaction.effects.some((effect) => effect.is(replaceInboxMetadata))
-      ));
-      if (tagBar && (u.docChanged || metadataChanged ||
-        u.transactions.some((t) => t.effects.some((e) => e.is(setTagFilter))))) {
-        tagBar.refresh();
-        annotationProjection?.refresh();
-      }
-    }),
-  ],
-  { noteDirProvider: () => session.currentProject?.path ?? session.currentStartDir },
-);
 const annotationProjectionRoot = document.querySelector<HTMLElement>("#annotation-projection-root")!;
-annotationProjection = mountAnnotationProjection(annotationProjectionRoot, editor, () => tagBar?.setActive(null));
-// 二级标签栏挂在采集区网格顶行（不在全局顶栏，也不受正文列宽限制）。
-tagBar = mountTagBar(editor, (tagId) => annotationProjection?.setActive(tagId));
-document.querySelector<HTMLElement>("#tag-bar-root")!.appendChild(tagBar.el);
-requestAnimationFrame(() => initScrollbar(editorRoot));
-editor.contentDOM.addEventListener("focus", () => publishInboxActive());
+const structuredInbox = await createStructuredInbox({
+  parent: editorRoot,
+  projectionRoot: annotationProjectionRoot,
+  onFocus: publishInboxActive,
+  onCaptureCompleted: () => onboardingController?.captured(),
+  onSave: (snapshot) => {
+    if (!applyingRemote && session.currentInbox) scheduleSave(session.currentInbox.entry.path, snapshot);
+  },
+  resolveImageSrc: (url) => imageSrc(url, session.currentProject?.path ?? session.currentStartDir),
+});
+document.querySelector<HTMLElement>("#tag-bar-root")!.appendChild(structuredInbox.tagBar);
+void attachStructuredMedia(structuredInbox.editor, () => session.currentProject?.path ?? session.currentStartDir);
+// The thumb must live outside the scrolling element, otherwise it moves with
+// the document instead of staying in the column gutter.
+requestAnimationFrame(() => initScrollbar(textCol, editorRoot));
 
 // 布局控制器：按窗口宽度分级收缩边距、决定助手嵌入/分离/分屏（init() 里用配置初始化）。
 let layoutController: ReturnType<typeof createLayoutController> | null = null;
@@ -280,47 +251,44 @@ const pieceCol = document.querySelector<HTMLElement>("#piece-col")!;
 const pieceScroll = document.querySelector<HTMLElement>("#piece-scroll")!;
 const versionPreviewRoot = document.querySelector<HTMLElement>("#piece-version-preview-root")!;
 
-
-
-
-
 /** 当前装载进 pieceEditor 的文件（项目模式=成品，文档模式=独立文档）。 */
 function activePieceFile(): NoteEntry | null {
   return session.mode === "document" ? session.currentDocument : session.currentPiece;
 }
 
-// grow:true → 编辑器长到内容高度、不自带内部滚动，于是标题与正文共用 #piece-scroll
-// 这一个外层滚动容器（Notion 式：标题随正文一起滚）。
-const pieceEditor = createEditor(
-  pieceEditorRoot,
-  (doc) => {
+// 共享正文表面铺满可用高度并随内容增长；标题和正文统一由 #piece-scroll 滚动。
+const pieceEditor = await createStructuredMarkdownEditor({
+  parent: pieceEditorRoot,
+  context: {
+    kind: "piece",
+    resolveImageSrc: (url) => imageSrc(url,
+      session.mode === "document" && session.currentDocument
+        ? parentDir(session.currentDocument.path)
+        : (session.currentProject?.path ?? session.currentStartDir)),
+  },
+  placeholder: "开始写…",
+  onChange: (doc) => {
     if (applyingRemote) return;
     const f = activePieceFile();
     if (f) scheduleSave(f.path, doc);
   },
-  [placeholder("开始写…")],
-  {
-    grow: true,
-    // pieceEditor is shared by project piece session.mode AND document session.mode. Branch on
-    // session.mode so document images land next to the document file, not the project dir.
-    noteDirProvider: () =>
-      session.mode === "document" && session.currentDocument
-        ? parentDir(session.currentDocument.path)
-        : (session.currentProject?.path ?? session.currentStartDir),
-  },
-);
+});
 const versionPreview = createVersionPreviewState();
-let versionPreviewEditorState: typeof pieceEditor.state | null = null;
+void attachStructuredMedia(pieceEditor, () =>
+  session.mode === "document" && session.currentDocument
+    ? parentDir(session.currentDocument.path)
+    : (session.currentProject?.path ?? session.currentStartDir));
+let versionPreviewEditorState: StructuredEditorCheckpoint | null = null;
 let versionPreviewGeneration = 0;
 
 function exitPieceVersionPreview() {
   versionPreviewGeneration += 1;
   versionPreview.exit();
-  setEditorReadOnly(pieceEditor, false);
+  pieceEditor.setReadOnly(false);
   if (versionPreviewEditorState) {
     applyingRemote = true;
     try {
-      pieceEditor.setState(versionPreviewEditorState);
+      pieceEditor.restore(versionPreviewEditorState);
     } finally {
       applyingRemote = false;
       versionPreviewEditorState = null;
@@ -390,7 +358,7 @@ function mountPieceHeader() {
       await snapshotNote(
         parentDir(target.path),
         target.name,
-        versionPreview.contentForRestore(pieceEditor.state.doc.toString()),
+        versionPreview.contentForRestore(pieceEditor.getMarkdown()),
         "manual",
       );
     },
@@ -401,10 +369,10 @@ function mountPieceHeader() {
       if (generation !== versionPreviewGeneration || activePieceFile()?.path !== target.path) {
         return false;
       }
-      versionPreview.begin(pieceEditor.state.doc.toString());
-      versionPreviewEditorState ??= pieceEditor.state;
-      setEditorReadOnly(pieceEditor, true);
-      applyPreviewTo(pieceEditor, content);
+      versionPreview.begin(pieceEditor.getMarkdown());
+      versionPreviewEditorState ??= pieceEditor.checkpoint();
+      pieceEditor.setReadOnly(true);
+      applyPiecePreview(content);
       return true;
     },
     exitPreview: exitPieceVersionPreview,
@@ -415,11 +383,11 @@ function mountPieceHeader() {
       try {
         await settlePendingWrites(path);
         if (activePieceFile()?.path !== target.path) return;
-        let currentContent = versionPreview.contentForRestore(pieceEditor.state.doc.toString());
+        let currentContent = versionPreview.contentForRestore(pieceEditor.getMarkdown());
         if (isDirty(path)) {
           await saveImmediate(path, currentContent);
           if (activePieceFile()?.path !== target.path) return;
-          currentContent = versionPreview.contentForRestore(pieceEditor.state.doc.toString());
+          currentContent = versionPreview.contentForRestore(pieceEditor.getMarkdown());
         }
         const restored = await restoreVersion(
           parentDir(target.path),
@@ -435,14 +403,14 @@ function mountPieceHeader() {
         if (versionPreviewEditorState) {
           applyingRemote = true;
           try {
-            pieceEditor.setState(versionPreviewEditorState);
+            pieceEditor.restore(versionPreviewEditorState);
           } finally {
             applyingRemote = false;
             versionPreviewEditorState = null;
           }
         }
-        setEditorReadOnly(pieceEditor, false);
-        applyRemoteTo(pieceEditor, restored.content);
+        pieceEditor.setReadOnly(false);
+        applyRemotePiece(restored.content);
       } catch (error) {
         throw error;
       }
@@ -466,7 +434,7 @@ function mountPieceHeader() {
     focusBody: () => {
       // 标题回车后，焦点落到正文编辑器首行行首。
       pieceEditor.focus();
-      pieceEditor.dispatch({ selection: { anchor: 0, head: 0 } });
+      pieceEditor.setSelection(0);
     },
     },
   });
@@ -476,35 +444,43 @@ async function openPiece(entry: NoteEntry) {
   pieceHeader?.exitVersionPreview();
   session.currentPiece = entry;
   pieceHeader?.setLabel(entry.name);
-  applyRemoteTo(pieceEditor, await loadNote(entry.path));
+  applyRemotePiece(await loadNote(entry.path));
 }
+
+let captureTargetLoading = 0;
 
 /** 打开一个独立文档：切到文档模式，复用 pieceEditor 渲染该文件。 */
 async function openDocument(doc: NoteEntry) {
-  pieceHeader?.exitVersionPreview();
-  // 独立文档无 _tasks.md：进入文档模式时把行动「临时遮挡」——记下开关并关掉，
-  // 返回项目时按记忆恢复（见 openProject）。
-  const plan = actionTargetForTransition({
-    from: session.mode,
-    to: "document",
-    currentOpen: tasksPanel.isOpen(),
-    rememberedOpen: session.actionDesiredOpen,
-  });
-  if (plan.remember !== null) session.actionDesiredOpen = plan.remember;
-  tasksPanel.setOpen(plan.open);
-  session.mode = "document";
-  session.currentDocument = doc;
-  session.recentDocuments = pushRecent(session.recentDocuments, doc.path);
-  await setRecentDocuments(session.recentDocuments);
-  setProjectLabel(doc.name);
-  clearEmptyState();
-  applyRemoteTo(pieceEditor, await loadNote(doc.path));
-  pieceHeader?.setLabel(doc.name);
-  applyView();
-  void invoke("set_active_note", { dir: parentDir(doc.path), noteId: doc.name, path: doc.path, kind: "doc" });
-  assistantHandle.setScope(assistantController.currentScope());
-  // 独立文档不在项目目录内，停掉文件监听以免误刷新（返回项目时再 watch_dir）。
-  void invoke("unwatch_dir");
+  captureTargetLoading += 1;
+  try {
+    pieceHeader?.exitVersionPreview();
+    // 独立文档无 _tasks.md：进入文档模式时把行动「临时遮挡」——记下开关并关掉，
+    // 返回项目时按记忆恢复（见 openProject）。
+    const plan = actionTargetForTransition({
+      from: session.mode,
+      to: "document",
+      currentOpen: tasksPanel.isOpen(),
+      rememberedOpen: session.actionDesiredOpen,
+    });
+    if (plan.remember !== null) session.actionDesiredOpen = plan.remember;
+    tasksPanel.setOpen(plan.open);
+    session.mode = "document";
+    session.currentDocument = doc;
+    session.recentDocuments = pushRecent(session.recentDocuments, doc.path);
+    await setRecentDocuments(session.recentDocuments);
+    setProjectLabel(doc.name);
+    clearEmptyState();
+    applyRemotePiece(await loadNote(doc.path));
+    pieceHeader?.setLabel(doc.name);
+    applyView();
+    void invoke("set_active_note", { dir: parentDir(doc.path), noteId: doc.name, path: doc.path, kind: "doc" });
+    assistantHandle.setScope(assistantController.currentScope());
+    // 独立文档不在项目目录内，停掉文件监听以免误刷新（返回项目时再 watch_dir）。
+    void invoke("unwatch_dir");
+    onboardingController?.documentOpened();
+  } finally {
+    captureTargetLoading -= 1;
+  }
 }
 
 /** 列举项目内的 piece；失败时返回空数组并把错误上抛由调用方决定回退。 */
@@ -535,16 +511,12 @@ function applyView() {
     app.classList.add("show-piece");
     app.classList.remove("show-inbox");
     setViewSeg("piece", false);
-    requestEditorLayout(editor);
-    requestEditorLayout(pieceEditor);
     return;
   }
   // 双栏时采集恒在左、写作恒在右；单栏时按 session.surface 选一个。
   app.classList.toggle("show-piece", !split && session.surface === "piece");
   app.classList.toggle("show-inbox", split || session.surface === "inbox");
   setViewSeg(split ? "split" : session.surface, canSplit(window.innerWidth));
-  requestEditorLayout(editor);
-  requestEditorLayout(pieceEditor);
 }
 
 function selectView(view: "inbox" | "piece" | "split") {
@@ -556,6 +528,7 @@ function selectView(view: "inbox" | "piece" | "split") {
   }
   applyView();
   tasksPanel.syncLayout();
+  onboardingController?.userSelectedView(view);
 }
 
 const tasksPanel = createTasksPanel(noteBody, {
@@ -564,24 +537,25 @@ const tasksPanel = createTasksPanel(noteBody, {
   onOpenChange: (open) => {
     setTasksToggle(open);
     layoutController?.setActionOpen(open);
+    onboardingController?.tasksChanged();
   },
 });
 
-/** 用 AI/外部写入的新内容覆盖编辑器，不触发本地 autosave。 */
-function applyRemoteTo(view: EditorView, content: string) {
+/** 用 AI/外部写入的新内容覆盖结构化写作编辑器，不触发本地 autosave。 */
+function applyRemotePiece(content: string) {
   applyingRemote = true;
   try {
-    setDoc(view, content);
+    pieceEditor.replace(content, { addToHistory: true });
   } finally {
     applyingRemote = false;
   }
 }
 
 /** Version preview is a transient projection, not an edit or undo step. */
-function applyPreviewTo(view: EditorView, content: string) {
+function applyPiecePreview(content: string) {
   applyingRemote = true;
   try {
-    replaceDocWithoutHistory(view, content);
+    pieceEditor.replace(content, { addToHistory: false });
   } finally {
     applyingRemote = false;
   }
@@ -591,20 +565,13 @@ function applyRemoteDoc(content: string) {
   const decoded = decodeInbox(content);
   applyingRemote = true;
   try {
-    editor.dispatch({
-      changes: { from: 0, to: editor.state.doc.length, insert: decoded.markdown },
-      effects: replaceInboxMetadata.of(decoded.metadata),
-      annotations: Transaction.addToHistory.of(false),
-    });
+    structuredInbox.load(decoded.markdown, decoded.metadata);
+    structuredInbox.setReadOnly(decoded.warnings.length > 0);
   } finally {
     applyingRemote = false;
   }
-  const activeFilter = activeTagFilter(editor.state);
-  if (activeFilter && !decoded.metadata.tags.some((tag) => tag.id === activeFilter)) {
-    tagBar?.setActive(null);
-  }
   if (decoded.warnings.length > 0) {
-    showToast(`已忽略 ${decoded.warnings.length} 条无效的 Inbox 标注 metadata`);
+    showToast(`Inbox metadata 已损坏，已用只读模式打开（${decoded.warnings.length} 条错误）`);
   }
 }
 
@@ -622,6 +589,8 @@ const assistantHandle = assistantController.handle;
 
 async function toggleAssistantFromChrome() {
   await assistantController.toggleFromChrome();
+  const current = await invoke<{ open: boolean }>("get_assistant_state");
+  if (current.open) onboardingController?.assistantOpened();
 }
 
 async function handleAgentNoteUpdated(payload: NoteUpdated) {
@@ -657,7 +626,7 @@ async function handleAgentNoteUpdated(payload: NoteUpdated) {
       return;
     case "document":
       pieceHeader?.exitVersionPreview();
-      applyRemoteTo(pieceEditor, await loadNote(target.entry.path));
+      applyRemotePiece(await loadNote(target.entry.path));
       applyView();
       return;
   }
@@ -696,7 +665,7 @@ void onFileChanged(async (changedPath) => {
   if (activeFile && changedPath === activeFile.path) {
     try {
       pieceHeader?.exitVersionPreview();
-      applyRemoteTo(pieceEditor, await loadNote(activeFile.path));
+      applyRemotePiece(await loadNote(activeFile.path));
     } catch {
       // 文件已不存在（外部删除）→ 列剩余 pieces，切下一片或 NO_PIECE。
       await handleActivePieceGone();
@@ -769,7 +738,7 @@ onConflict(async (path, localContent) => {
         applyRemoteDoc(await loadNote(path));
       } else if (activeFile && path === activeFile.path) {
         pieceHeader?.exitVersionPreview();
-        applyRemoteTo(pieceEditor, await loadNote(path));
+        applyRemotePiece(await loadNote(path));
       } else if (session.currentProject && path === tasksPath(session.currentProject.path)) {
         tasksPanel.reload();
       } else {
@@ -873,50 +842,58 @@ async function rememberDocument(path: string) {
 }
 
 async function openProject(project: ProjectEntry) {
-  pieceHeader?.exitVersionPreview();
-  // 从文档模式返回项目：按离开项目时记下的开关恢复行动面板。
-  const wasDocument = session.mode === "document";
-  session.mode = "project";
-  session.currentDocument = null;
-  session.currentProject = project;
-  await rememberProject(project.path);
-  const entry = inboxEntry(project);
-  session.currentInbox = { dir: project.path, entry };
-  setProjectLabel(project.name);
-  applyRemoteDoc(await loadNote(entry.path));
-  // 加载第一篇 piece — 不再兜底建时间戳文件；空列表 → NO_PIECE 空态。
-  let pieces: NoteEntry[];
+  captureTargetLoading += 1;
   try {
-    pieces = await loadFirstPiece();
-  } catch (err) {
-    // 项目目录在打开过程中消失（被外部删除/权限丢失）→ 回到 bootstrap 兜底。
-    console.error("list pieces failed", err);
-    session.currentProject = null;
-    session.currentInbox = null;
-    await bootstrapProjects(await getConfig());
-    return;
+    pieceHeader?.exitVersionPreview();
+    // 从文档模式返回项目：按离开项目时记下的开关恢复行动面板。
+    const wasDocument = session.mode === "document";
+    session.mode = "project";
+    session.currentDocument = null;
+    session.currentProject = project;
+    await rememberProject(project.path);
+    const entry = inboxEntry(project);
+    session.currentInbox = { dir: project.path, entry };
+    setProjectLabel(project.name);
+    applyRemoteDoc(await loadNote(entry.path));
+    // 加载第一篇 piece — 不再兜底建时间戳文件；空列表 → NO_PIECE 空态。
+    let pieces: NoteEntry[];
+    try {
+      pieces = await loadFirstPiece();
+    } catch (err) {
+      // 项目目录在打开过程中消失（被外部删除/权限丢失）→ 回到 bootstrap 兜底。
+      console.error("list pieces failed", err);
+      session.currentProject = null;
+      session.currentInbox = null;
+      await bootstrapProjects(await getConfig());
+      return;
+    }
+    const state = resolveOpenProject({ project, pieces });
+    if (state.kind === "LOADED") {
+      await openPiece(state.piece);
+    } else {
+      session.surface = "inbox";
+    }
+    renderWindowState(state);
+    tasksPanel.reload();
+    // 文档→项目恢复行动面板：reload 已加载新项目 tasks，setOpen 仅切可见态。
+    // 同模式（项目→项目）时 plan.open === 当前开关，setOpen 的 no-op 守卫不触发副作用。
+    const plan = actionTargetForTransition({
+      from: wasDocument ? "document" : "project",
+      to: "project",
+      currentOpen: tasksPanel.isOpen(),
+      rememberedOpen: session.actionDesiredOpen,
+    });
+    tasksPanel.setOpen(plan.open);
+    applyView();
+    // 发布活动笔记（= 当前项目的 _inbox.md），供独立助手窗 / apply_write 定位。
+    void invoke("set_active_note", { dir: project.path, noteId: entry.name, path: entry.path, kind: "inbox" });
+    assistantHandle.setScope(assistantController.currentScope());
+    // 切换文件监听到新项目目录。
+    void invoke("watch_dir", { dir: project.path });
+    onboardingController?.projectOpened();
+  } finally {
+    captureTargetLoading -= 1;
   }
-  const state = resolveOpenProject({ project, pieces });
-  if (state.kind === "LOADED") {
-    await openPiece(state.piece);
-  }
-  renderWindowState(state);
-  tasksPanel.reload();
-  // 文档→项目恢复行动面板：reload 已加载新项目 tasks，setOpen 仅切可见态。
-  // 同模式（项目→项目）时 plan.open === 当前开关，setOpen 的 no-op 守卫不触发副作用。
-  const plan = actionTargetForTransition({
-    from: wasDocument ? "document" : "project",
-    to: "project",
-    currentOpen: tasksPanel.isOpen(),
-    rememberedOpen: session.actionDesiredOpen,
-  });
-  tasksPanel.setOpen(plan.open);
-  applyView();
-  // 发布活动笔记（= 当前项目的 _inbox.md），供独立助手窗 / apply_write 定位。
-  void invoke("set_active_note", { dir: project.path, noteId: entry.name, path: entry.path, kind: "inbox" });
-  assistantHandle.setScope(assistantController.currentScope());
-  // 切换文件监听到新项目目录。
-  void invoke("watch_dir", { dir: project.path });
 }
 
 /** 启动时打开项目：优先 MRU 列表里仍存在的第一个；MRU 为空时扫描工作目录下的
@@ -1391,13 +1368,17 @@ renderTopbar(document.querySelector("#topbar-root")!, {
 // #piece-doc-header 已在 app.innerHTML 中就位，挂载文档头到「写作」栏顶部。
 mountPieceHeader();
 
-// 标题栏（第一行）：左侧留给系统红绿灯、可拖拽，最右端助手 icon。
+// 标题栏（第一行）：macOS 左侧留给系统红绿灯、可拖拽，最右端助手 icon；
+// Windows 由 renderTitlebar 内补自绘窗口按钮。
 renderTitlebar(document.querySelector("#titlebar-root")!, {
   // 单击：开/关整个助手。
   onAssistantToggle: async () => {
     await toggleAssistantFromChrome();
   },
 });
+
+// Windows 无边框窗口的边缘缩放手柄（非 Windows 早退）。
+mountResizeEdges();
 
 // resize 过渡门控：连续拖拽（事件间隔 <120ms）时关掉过渡保证不卡顿；
 // 离散跳变（双击标题栏放大、开关助手）是孤立事件，保留过渡 → 平滑动画。
@@ -1415,6 +1396,11 @@ window.addEventListener("resize", () => {
   resizeSettle = window.setTimeout(() => noteBody.classList.remove("resizing"), 180);
 });
 
+// WebView2 的输入法锚点在窗口被拖动/缩放后会失效（候选框跑到屏幕角落），
+// 手势停下后重新聚焦编辑器即可复位。后端只在 Windows 上发这个事件。
+const imeAnchorRefresher = createImeAnchorRefresher();
+void listen("window-geometry-changed", () => imeAnchorRefresher.schedule());
+
 async function init() {
   const config = await getConfig();
   await bootstrapProjects(config);
@@ -1423,6 +1409,26 @@ async function init() {
   layoutController = createLayoutController(app, { assistantOpen: assistant.open });
   layoutController.apply();
   applyView();
+
+  onboardingController = createOnboardingController({
+    app,
+    hasProject: () => session.mode === "project" && session.currentProject !== null,
+    createPiece: async () => {
+      if (!session.currentPiece) await createFirstPiece();
+    },
+    selectView,
+    focusPieceTitle,
+    hasDocument: () => session.mode === "document",
+    setTasksOpen: (open) => tasksPanel.setOpen(open),
+    tasksOpen: () => tasksPanel.isOpen(),
+    openAssistant: async () => {
+      const current = await invoke<{ open: boolean }>("get_assistant_state");
+      if (!current.open) await toggleAssistantFromChrome();
+      onboardingController?.assistantOpened();
+    },
+    captureShortcut: () => config.shortcut_capture,
+  });
+  await onboardingController.start();
 
   // ── 窗内快捷键 ──
   let uninstallShortcuts: (() => void) | null = null;
@@ -1454,22 +1460,16 @@ async function init() {
     quickAddAction: () => tasksPanel.quickAdd(),
     increaseEditorFontSize: () => {
       const size = adjustEditorFontSize(1);
-      requestEditorLayout(editor);
-      requestEditorLayout(pieceEditor);
       pieceHeader?.refit();
       showToast(`笔记字号 ${size}px`);
     },
     decreaseEditorFontSize: () => {
       const size = adjustEditorFontSize(-1);
-      requestEditorLayout(editor);
-      requestEditorLayout(pieceEditor);
       pieceHeader?.refit();
       showToast(`笔记字号 ${size}px`);
     },
     resetEditorFontSize: () => {
       const size = resetEditorFontSize();
-      requestEditorLayout(editor);
-      requestEditorLayout(pieceEditor);
       pieceHeader?.refit();
       showToast(`笔记字号 ${size}px`);
     },
@@ -1501,18 +1501,58 @@ async function init() {
   };
 
   await loadShortcuts();
+  await listen<QuotePayload>("quote-captured", ({ payload }) => {
+    if (isPreparingUpdate()) { showToast("正在安装更新，请重启后重新采集"); return; }
+    if (captureTargetLoading) {
+      showToast("文档正在加载，请稍后重新采集");
+      return;
+    }
+    if (session.mode === "document") {
+      const document = session.currentDocument;
+      if (!document) return;
+      if (versionPreview.active) {
+        showToast("请先退出版本预览再采集");
+        return;
+      }
+      captureQuote(pieceEditor, payload);
+      scheduleSave(document.path, pieceEditor.getMarkdown());
+      pieceEditor.focus();
+      return;
+    }
+    const project = session.currentProject;
+    const inbox = session.currentInbox;
+    if (!project || !inbox) {
+      showToast("请先打开项目或独立文档再采集");
+      return;
+    }
+    const writing = session.surface === "piece" && !layoutController?.isSplit();
+    if (!structuredInbox.capture(payload, !writing) || !writing) return;
+    const snapshot = structuredInbox.snapshot();
+    const selection = structuredInbox.editor.withView((view) => view.state.selection.from);
+    void saveImmediate(inbox.entry.path, snapshot).then(() => {
+      showToast(`已采集到「${project.name}」的采集区`, {
+        label: "查看",
+        onClick: () => {
+          void (async () => {
+            if (session.mode !== "project" || session.currentProject?.path !== project.path) {
+              await openProject(project);
+            }
+            structuredInbox.setFilter(null);
+            selectView("inbox");
+            structuredInbox.editor.setSelection(selection);
+            structuredInbox.editor.focus();
+            structuredInbox.editor.withView((view) => view.dispatch(view.state.tr.scrollIntoView()));
+          })().catch(() => showToast("无法打开采集区"));
+        },
+      });
+    }).catch(() => showToast("采集内容保存失败，请检查文件状态"));
+  });
   await listen("window-shortcuts-changed", () => { void loadShortcuts(); });
 
-  // 检查 sidecar 启动状态：若有错误，在助手面板显示提示。
-  const agentStatus = await invoke<{ ready: boolean; error: string | null }>("get_agent_status");
-  if (agentStatus.error) {
-    assistantHandle.showError(agentStatus.error);
-  }
 }
 
-void init();
+void init().then(() => startUpdates()).catch(console.error);
 
-attachQuoteCapture(editor);
 attachAutomationToasts();
 
 }

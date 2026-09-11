@@ -1,3 +1,4 @@
+import { getAiReadiness, retryAiConfiguration, openAiSettings } from "../platform/ai-readiness";
 import { invoke } from "@tauri-apps/api/core";
 import { emit, emitTo, listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -11,7 +12,7 @@ import {
   agentOpenSession,
   agentSend,
   onAgentEvent,
-} from "./agent";
+} from "../platform/agent";
 import {
   chatCreate,
   chatDelete,
@@ -22,7 +23,7 @@ import {
   sessionDirFromFile,
   type ChatConversation,
   type ChatScope,
-} from "./chat-history";
+} from "../platform/chat-history";
 import { type NoteEntry, type ProjectEntry, listNotes, resolveDocuments, resolveProjects } from "./notes-state";
 import { NoteSession } from "./note-session";
 import { parentDir } from "./recent-projects";
@@ -34,6 +35,7 @@ import {
   type PopupQuestionRequest,
   type PopupQuestionResult,
 } from "../platform/selection-popup";
+import { onOnboardingPreviewChanged } from "../platform/onboarding";
 
 export function chatScopeForSession(session: NoteSession): ChatScope | null {
   if (session.mode === "document") {
@@ -135,6 +137,9 @@ export function createAssistantController(deps: AssistantControllerDeps): Assist
     listSkills: agentListSkills,
     getOutputMode: getAssistantOutputMode,
     subscribeOutputMode: onAssistantOutputModeChanged,
+    getReadiness: getAiReadiness,
+    retryConfiguration: retryAiConfiguration,
+    openSettings: openAiSettings,
     listFiles: async (scope) => {
       if (scope.scopeType === "project") {
         const notes = await listNotes(scope.scopePath);
@@ -183,8 +188,11 @@ export function createAssistantController(deps: AssistantControllerDeps): Assist
     navigationToken += 1;
     handle.setScope(currentScope());
   });
-  void listen<boolean>("agent://configuration-changed", (event) => {
-    if (event.payload) void handle.refreshConversation();
+  void listen("agent://configuration-changed", () => { void handle.refreshReadiness(); });
+  void onOnboardingPreviewChanged((scene) => {
+    if (scene === "assistant-configured-empty") handle.setReadinessPreview({ status: "ready" });
+    else if (scene === "assistant-unconfigured") handle.setReadinessPreview({ status: "unconfigured" });
+    else handle.setReadinessPreview(null);
   });
 
   void listen<PopupQuestionRequest>("popup-question-request", async (event) => {

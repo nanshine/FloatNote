@@ -1,4 +1,4 @@
-use super::protocol::{EditPreview, HostToSidecar, MutationOperation, NoteUpdated, WorkspaceEntry};
+use super::protocol::{EditPreview, MutationOperation, NoteUpdated, WorkspaceEntry};
 use crate::project::{INBOX_FILE, TASKS_FILE};
 use crate::state::AppState;
 use crate::versions;
@@ -12,10 +12,8 @@ pub const LEASE_TTL: Duration = Duration::from_secs(120);
 #[derive(Debug, Clone)]
 pub struct PendingMutation {
     pub request_id: String,
-    pub call_id: String,
     pub conversation_id: String,
     pub tool_call_id: String,
-    pub tool_name: String,
     pub operation: MutationOperation,
     pub dir: PathBuf,
     pub path: PathBuf,
@@ -97,16 +95,19 @@ impl MutationStore {
         Ok(approved)
     }
 
-    pub fn clear(&mut self) {
-        self.pending.clear();
-        self.approved.clear();
-    }
-
     pub fn clear_conversation(&mut self, conversation_id: &str) {
         self.pending
             .retain(|_, mutation| mutation.conversation_id != conversation_id);
         self.approved
             .retain(|_, approved| approved.mutation.conversation_id != conversation_id);
+    }
+
+    pub fn pending_request_ids(&self, conversation_id: &str) -> Vec<String> {
+        self.pending
+            .values()
+            .filter(|mutation| mutation.conversation_id == conversation_id)
+            .map(|mutation| mutation.request_id.clone())
+            .collect()
     }
 
     fn retain_active(&mut self, now: Instant) {
@@ -131,7 +132,7 @@ fn failed_commit(message: impl Into<String>) -> MutationCommitOutcome {
 }
 
 #[allow(clippy::too_many_arguments)]
-fn commit_at_with<F: FnOnce()>(
+pub(crate) fn commit_at_with<F: FnOnce()>(
     dir: &Path,
     note_id: &str,
     path: &Path,
@@ -223,7 +224,6 @@ fn commit_at(
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[allow(dead_code)] // Rewrite/create are consumed by the mutation transaction added in Task 6.
 pub enum ResolveMode {
     ReadExisting,
     RewriteExisting,
@@ -352,7 +352,7 @@ pub fn list_project_space(dir: &Path) -> Result<Vec<WorkspaceEntry>, String> {
     Ok(entries)
 }
 
-fn active_project_dir(state: &AppState) -> Result<PathBuf, String> {
+pub(crate) fn active_project_dir(state: &AppState) -> Result<PathBuf, String> {
     let active = state
         .active_note
         .lock()
@@ -360,70 +360,163 @@ fn active_project_dir(state: &AppState) -> Result<PathBuf, String> {
         .clone()
         .ok_or("当前没有活动项目")?;
     let dir = PathBuf::from(active.dir);
+    if !state.authorized_roots.allows_project(&dir) {
+        return Err("当前项目未由 FloatNote 授权".into());
+    }
     if !crate::project::is_project_dir(&dir) {
         return Err("当前没有活动的 FloatNote project space".into());
     }
     Ok(dir)
 }
 
-pub(super) fn handle_workspace_list(app: &AppHandle, call_id: String) {
-    let Some(state) = app.try_state::<AppState>() else {
-        return;
-    };
-    let result = active_project_dir(&state).and_then(|dir| list_project_space(&dir));
-    let (entries, error) = match result {
-        Ok(entries) => (entries, None),
-        Err(error) => (Vec::new(), Some(error)),
-    };
-    let _ = state.agent.lock().unwrap().as_mut().map(|agent| {
-        agent.send(&HostToSidecar::WorkspaceListResult {
-            call_id,
-            entries,
-            error,
-        })
-    });
+#[derive(Debug, Clone)]
+pub(crate) struct MutationDraft {
+    pub operation: MutationOperation,
+    pub path: String,
+    pub old_content: String,
+    pub new_content: String,
+    pub create_only: bool,
+    pub preview: EditPreview,
 }
 
-pub(super) fn handle_workspace_read(app: &AppHandle, call_id: String, path: String) {
-    let Some(state) = app.try_state::<AppState>() else {
-        return;
+pub(crate) async fn review_and_commit(
+    app: &AppHandle,
+    conversation_id: &str,
+    tool_call_id: &str,
+    tool_name: &str,
+    draft: MutationDraft,
+) -> Result<String, String> {
+    let state = app.state::<AppState>();
+    if !mutation_matches_tool(tool_name, draft.operation) {
+        return Err("工具名称与变更类型不匹配".into());
+    }
+    if draft.create_only != (draft.operation == MutationOperation::Create) {
+        return Err("createOnly 与变更类型不匹配".into());
+    }
+    let dir = active_project_dir(&state)?;
+    let mode = if draft.create_only {
+        ResolveMode::CreatePiece
+    } else {
+        ResolveMode::RewriteExisting
     };
-    let result = active_project_dir(&state)
-        .and_then(|dir| resolve_project_file(&dir, &path, ResolveMode::ReadExisting))
-        .and_then(|resolved| {
-            std::fs::read_to_string(resolved.path).map_err(|error| format!("无法读取笔记：{error}"))
-        });
-    let (found, content, error) = match result {
-        Ok(content) => (true, Some(content), None),
-        Err(error) => (false, None, Some(error)),
+    let resolved = resolve_project_file(&dir, &draft.path, mode)?;
+    if draft.operation == MutationOperation::Tag && resolved.kind != "inbox" {
+        return Err("标签工具只能修改 _inbox.md".into());
+    }
+    if draft.create_only {
+        if !draft.old_content.is_empty() {
+            return Err("创建操作的旧内容必须为空".into());
+        }
+    } else {
+        let current = std::fs::read_to_string(&resolved.path)
+            .map_err(|error| format!("无法读取当前笔记：{error}"))?;
+        if current != draft.old_content {
+            return Err("笔记已变更，请重读".into());
+        }
+    }
+    let can_snapshot = tool_name == "write"
+        && draft.operation == MutationOperation::Rewrite
+        && resolved.kind == "piece";
+    let request_id = format!("permission-{}", random_token(12)?);
+    let pending = PendingMutation {
+        request_id: request_id.clone(),
+        conversation_id: conversation_id.into(),
+        tool_call_id: tool_call_id.into(),
+        operation: draft.operation,
+        dir,
+        path: resolved.path,
+        note_id: resolved.note_id,
+        old_content: draft.old_content,
+        new_content: draft.new_content,
+        create_only: draft.create_only,
+        can_snapshot,
     };
-    let _ = state.agent.lock().unwrap().as_mut().map(|agent| {
-        agent.send(&HostToSidecar::WorkspaceReadResult {
-            call_id,
-            found,
-            content,
-            error,
-        })
+    let (sender, receiver) = tokio::sync::oneshot::channel();
+    state
+        .mutations
+        .lock()
+        .unwrap()
+        .insert_pending(pending.clone());
+    state
+        .pending_permissions
+        .lock()
+        .unwrap()
+        .insert(request_id.clone(), sender);
+    let payload = serde_json::json!({
+        "request_id": request_id, "conversation_id": conversation_id, "tool_call_id": tool_call_id,
+        "tool_name": tool_name, "operation": pending.operation, "old_content": pending.old_content,
+        "new_content": pending.new_content, "preview": draft.preview, "can_snapshot": can_snapshot,
+        "resolved_dir": pending.dir.to_string_lossy(), "resolved_note_id": pending.note_id,
+        "resolved_path": pending.path.to_string_lossy(),
     });
+    if let Err(error) = app.emit("permission://request", payload) {
+        state.mutations.lock().unwrap().deny(&pending.request_id);
+        state
+            .pending_permissions
+            .lock()
+            .unwrap()
+            .remove(&pending.request_id);
+        return Err(format!("无法显示写入确认：{error}"));
+    }
+    let (lease, _selected_mode) =
+        match tokio::time::timeout(Duration::from_secs(600), receiver).await {
+            Ok(Ok(result)) => result?,
+            Ok(Err(_)) => return Err("写入审核已取消".into()),
+            Err(_) => {
+                state.mutations.lock().unwrap().deny(&pending.request_id);
+                state
+                    .pending_permissions
+                    .lock()
+                    .unwrap()
+                    .remove(&pending.request_id);
+                return Err("写入审核已超时".into());
+            }
+        };
+    let approved = state.mutations.lock().unwrap().take_approved(
+        &lease,
+        tool_call_id,
+        conversation_id,
+        Instant::now(),
+    )?;
+    let write_mode = approved.write_mode.clone();
+    let mutation = approved.mutation;
+    let path_text = mutation.path.to_string_lossy().into_owned();
+    let outcome = commit_at_with(
+        &mutation.dir,
+        &mutation.note_id,
+        &mutation.path,
+        &mutation.old_content,
+        &mutation.new_content,
+        mutation.create_only,
+        &write_mode,
+        mutation.can_snapshot,
+        mutation.operation,
+        || crate::watcher::mark_self_write(&state.write_suppress, &path_text),
+    );
+    if !outcome.ok {
+        return Err(outcome.error.unwrap_or_else(|| "写入失败".into()));
+    }
+    let _ = app.emit(
+        "note://updated",
+        NoteUpdated {
+            note_id: mutation.note_id,
+            path: path_text,
+            version: outcome.version.unwrap_or(0),
+        },
+    );
+    Ok(match mutation.operation {
+        MutationOperation::Create => format!("已创建 {}", draft.path),
+        _ => outcome.version.map_or_else(
+            || format!("已更新 {}", draft.path),
+            |version| format!("已更新 {}，版本 v{version}", draft.path),
+        ),
+    })
 }
 
-fn send_review_result(
-    state: &AppState,
-    call_id: String,
-    allowed: bool,
-    lease: Option<String>,
-    write_mode: Option<super::protocol::WriteMode>,
-    error: Option<String>,
-) {
-    let _ = state.agent.lock().unwrap().as_mut().map(|agent| {
-        agent.send(&HostToSidecar::MutationReviewResult {
-            call_id,
-            allowed,
-            lease,
-            write_mode,
-            error,
-        })
-    });
+fn random_token(bytes_len: usize) -> Result<String, String> {
+    let mut bytes = vec![0u8; bytes_len];
+    getrandom::fill(&mut bytes).map_err(|error| error.to_string())?;
+    Ok(bytes.iter().map(|byte| format!("{byte:02x}")).collect())
 }
 
 fn mutation_matches_tool(tool_name: &str, operation: MutationOperation) -> bool {
@@ -438,174 +531,6 @@ fn mutation_matches_tool(tool_name: &str, operation: MutationOperation) -> bool 
     }
 }
 
-#[allow(clippy::too_many_arguments)]
-pub(super) fn handle_review_mutation(
-    app: &AppHandle,
-    call_id: String,
-    conversation_id: String,
-    tool_call_id: String,
-    tool_name: String,
-    operation: MutationOperation,
-    virtual_path: String,
-    old_content: String,
-    new_content: String,
-    create_only: bool,
-    preview: EditPreview,
-) {
-    let Some(state) = app.try_state::<AppState>() else {
-        return;
-    };
-    let result = (|| -> Result<PendingMutation, String> {
-        if !mutation_matches_tool(&tool_name, operation) {
-            return Err("工具名称与变更类型不匹配".into());
-        }
-        if create_only != (operation == MutationOperation::Create) {
-            return Err("createOnly 与变更类型不匹配".into());
-        }
-        let dir = active_project_dir(&state)?;
-        let mode = if create_only {
-            ResolveMode::CreatePiece
-        } else {
-            ResolveMode::RewriteExisting
-        };
-        let resolved = resolve_project_file(&dir, &virtual_path, mode)?;
-        if operation == MutationOperation::Tag && resolved.kind != "inbox" {
-            return Err("标签工具只能修改 _inbox.md".into());
-        }
-        if create_only {
-            if !old_content.is_empty() {
-                return Err("创建操作的旧内容必须为空".into());
-            }
-        } else {
-            let current = std::fs::read_to_string(&resolved.path)
-                .map_err(|error| format!("无法读取当前笔记：{error}"))?;
-            if current != old_content {
-                return Err("笔记已变更，请重读".into());
-            }
-        }
-        let can_snapshot = tool_name == "write"
-            && operation == MutationOperation::Rewrite
-            && resolved.kind == "piece";
-        Ok(PendingMutation {
-            request_id: call_id.clone(),
-            call_id: call_id.clone(),
-            conversation_id: conversation_id.clone(),
-            tool_call_id: tool_call_id.clone(),
-            tool_name: tool_name.clone(),
-            operation,
-            dir,
-            path: resolved.path,
-            note_id: resolved.note_id,
-            old_content: old_content.clone(),
-            new_content: new_content.clone(),
-            create_only,
-            can_snapshot,
-        })
-    })();
-
-    let pending = match result {
-        Ok(pending) => pending,
-        Err(error) => {
-            send_review_result(&state, call_id, false, None, None, Some(error));
-            return;
-        }
-    };
-    let payload = serde_json::json!({
-        "request_id": pending.request_id,
-        "conversation_id": pending.conversation_id,
-        "tool_call_id": pending.tool_call_id,
-        "tool_name": pending.tool_name,
-        "operation": pending.operation,
-        "old_content": pending.old_content,
-        "new_content": pending.new_content,
-        "preview": preview,
-        "can_snapshot": pending.can_snapshot,
-        "resolved_dir": pending.dir.to_string_lossy(),
-        "resolved_note_id": pending.note_id,
-        "resolved_path": pending.path.to_string_lossy(),
-    });
-    state
-        .mutations
-        .lock()
-        .unwrap()
-        .insert_pending(pending.clone());
-    if let Err(error) = app.emit("permission://request", &payload) {
-        state.mutations.lock().unwrap().deny(&pending.request_id);
-        send_review_result(
-            &state,
-            pending.call_id,
-            false,
-            None,
-            None,
-            Some(format!("无法显示写入确认：{error}")),
-        );
-    }
-}
-
-pub(super) fn handle_commit_mutation(
-    app: &AppHandle,
-    call_id: String,
-    conversation_id: String,
-    tool_call_id: String,
-    lease: String,
-) {
-    let Some(state) = app.try_state::<AppState>() else {
-        return;
-    };
-    let approved = state.mutations.lock().unwrap().take_approved(
-        &lease,
-        &tool_call_id,
-        &conversation_id,
-        Instant::now(),
-    );
-    let approved = match approved {
-        Ok(approved) => approved,
-        Err(error) => {
-            let _ = state.agent.lock().unwrap().as_mut().map(|agent| {
-                agent.send(&HostToSidecar::MutationCommitResult {
-                    call_id,
-                    ok: false,
-                    version: None,
-                    error: Some(error),
-                })
-            });
-            return;
-        }
-    };
-    let mutation = approved.mutation;
-    let path_text = mutation.path.to_string_lossy().into_owned();
-    let outcome = commit_at_with(
-        &mutation.dir,
-        &mutation.note_id,
-        &mutation.path,
-        &mutation.old_content,
-        &mutation.new_content,
-        mutation.create_only,
-        &approved.write_mode,
-        mutation.can_snapshot,
-        mutation.operation,
-        || crate::watcher::mark_self_write(&state.write_suppress, &path_text),
-    );
-    if outcome.ok {
-        let _ = app.emit(
-            "note://updated",
-            &NoteUpdated {
-                note_id: mutation.note_id,
-                path: path_text,
-                version: outcome.version.unwrap_or(0),
-            },
-        );
-    }
-    let _ = state.agent.lock().unwrap().as_mut().map(|agent| {
-        agent.send(&HostToSidecar::MutationCommitResult {
-            call_id,
-            ok: outcome.ok,
-            version: outcome.version,
-            error: outcome.error,
-        })
-    });
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -615,10 +540,8 @@ mod tests {
     fn pending(request_id: &str, tool_call_id: &str, old: &str, new: &str) -> PendingMutation {
         PendingMutation {
             request_id: request_id.into(),
-            call_id: request_id.into(),
             conversation_id: "conversation-1".into(),
             tool_call_id: tool_call_id.into(),
-            tool_name: "write".into(),
             operation: MutationOperation::Rewrite,
             dir: PathBuf::from("/tmp"),
             path: PathBuf::from("/tmp/piece.md"),

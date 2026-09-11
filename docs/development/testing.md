@@ -4,19 +4,24 @@
 | --- | --- |
 | `npm run test:frontend` | 前端与 shared 纯逻辑 Vitest 测试 |
 | `npm run test:infra` | review 编排、WebDriver 探针和配置隔离测试 |
-| `npm run test:sidecar` | sidecar protocol、工具和发布路径测试 |
 | `npm run build:frontend` | TypeScript 类型检查与 Vite MPA 构建 |
-| `npm run build:sidecar` | sidecar TypeScript 编译 |
-| `npm run smoke:sidecar` | ESM bundle 的 JSONL ready 握手 |
-| `npm run check` | 全部 JS/TS 测试、构建与 sidecar smoke |
+| `npm run check` | 全部前端/基础设施测试与构建 |
 | `npm run ci:local` | 从 `npm ci` 开始，随后执行版本一致性检查与完整 JS/TS 门禁 |
-| `npm run release:check -- --tag vX.Y.Z` | 校验发布标签、完整 JS/TS 门禁、sidecar staging 与全部 Rust 门禁 |
-| `cargo test --lib` | Rust 领域、协议和 adapter 单测 |
-| `cargo check --release` | 发布分支（包括 external sidecar 启动路径）编译 |
+| `npm run release:check -- --tag vX.Y.Z` | 校验发布标签、完整 JS/TS 与 Rust 门禁 |
+| `cargo test --lib` | Rust 领域、Rig adapter、会话和工具单测 |
+| `cargo check --release` | 发布分支编译 |
 | `npm run review:ui` | Chrome 中挂载真实前端组件，回归 UI 与交互状态 |
 | `npm run review:native:doctor` | 从当前源码启动 Tauri dev，探测 embedded WebDriver 状态和会话生命周期 |
 
 文件系统删除测试在无 Finder/桌面会话的 CI 或沙箱中应使用可替换的 trash adapter；不要把 OS 自动化失败误判为领域逻辑回归。
+
+Markdown 内核改动必须扩充结构化黄金语料并验证语义往返，而不是比较字节：至少覆盖
+嵌套/非 1 起始列表、任务项、列表后的段落、列表内公式、代码块语言、GFM 表格、
+图片属性、`[!quote]` 卡、CRLF、中文及无法识别的输入。Inbox 还必须覆盖重叠 mark、
+格式编辑后的 offset 重建、损坏 metadata 只读保护；composer 必须覆盖 IME、候选优先级、
+结构化引用剪贴板和提交失败保留草稿。浏览器回归重点检查列表后首行、公式基线、
+光标/选区、空文档留白点击与 placeholder、标签筛选投影的挂载层级、可拖动滚动条、
+折叠与 macOS/Windows WebView 布局差异。
 
 ## 本地 CI 分层
 
@@ -38,7 +43,7 @@ npm run release:check -- --tag v0.2.0
 
 ## 浏览器 UI 回归
 
-`npm run review:ui` 自动启动或复用 Vite，再由 WebdriverIO browser mode 驱动托管的 Chrome。`tests/review/browser/assistant-fixture.ts` 直接挂载生产 `mountAssistant` 和生产 CSS，只在 Tauri IPC 边界使用 browser-mode mock；不复制组件实现，也不需要 Tauri binary 或 `.app`。
+`npm run review:ui` 自动启动或复用 Vite，再由 WebdriverIO browser mode 驱动托管的 Chrome。`tests/review/browser/assistant-fixture.ts` 直接挂载生产 `mountAssistant` 和生产 CSS；`note-surfaces-fixture.ts` 直接创建生产 Inbox/Piece 编辑器；`onboarding-fixture.ts` 挂载生产引导控制器、通过 Tauri mock IPC 提供状态与权限，并复用生产 CSS，在 380×520、840×520、浅色和深色组合下检查内容卡及各锚定卡不会越出视口。fixture 不需要 Tauri binary 或 `.app`，失败截图统一写入 artifacts。
 
 - spec 位于 `tests/review/browser/`，配置见 `wdio.browser.conf.ts`；失败截图写入 `artifacts/browser-review/`。
 - 适合验证 DOM、计算样式、焦点、动画前后状态和前端 IPC 参数；不用于证明 Rust、真实 webview 或系统窗口行为。
@@ -62,6 +67,20 @@ npm run release:check -- --tag v0.2.0
 
 ## Agent 虚拟工作区的跨平台证据
 
-当前自动化覆盖 Windows 风格反斜杠与盘符绝对路径拒绝、路径大小写/文件名规则、CRLF clean Markdown 搜索，以及 create-only/同名竞态。macOS 上的完整 Rust、sidecar 和浏览器 UI 门禁通过不代表 Windows 原生 UI 已验证。
+当前自动化覆盖 Windows 风格反斜杠与盘符绝对路径拒绝、路径大小写/文件名规则、CRLF clean Markdown 搜索、Pi session 导入，以及 create-only/同名竞态。macOS 上的完整 Rust 和浏览器 UI 门禁通过不代表 Windows 原生 UI 已验证。
 
-Windows 发布前仍需人工复核：project picker 与 active-note 路径、Skill 目录 realpath、审批弹窗、piece create/rewrite/snapshot、外部编辑造成的 stale commit、watcher 自写抑制，以及 packaged sidecar 的启动与退出。
+Windows 发布前仍需人工复核：project picker 与 active-note 路径、Skill 目录 realpath、审批弹窗、piece create/rewrite/snapshot、外部编辑造成的 stale commit、watcher 自写抑制，以及五个 Provider 的流式请求。
+
+## 外部选区回归
+
+Rust 回归覆盖停止早于事件循环启动、真实 CFRunLoop pass 入口竞态（无需辅助功能授权）、
+取词未完成时新输入失效、最新请求替换、停止丢弃待处理请求、拖动中的光标证据节流与清空、
+Shift+Click、自动 AX 成功不调用剪贴板、UIA 对象占位符清理，以及 HTML 补齐的 generation 边界。
+
+原生验收需分别覆盖：Chrome/Safari/TextEdit 的快速进入文字拖选、段落边缘拖选、双击、
+Shift+Click、标题栏/滚动条拖动、连续划选后立即点击/输入、快速切换监听模式；自动浮条
+出现时剪贴板应不变，点击采集应保留匹配的富文本或安全回退为原缓存纯文本。
+Windows 另需验证 Chromium 的 tabindex 容器选区、终端复制、UIA 不响应时监听仍正常、
+多窗口同 PID 切换及跨缩放屏定位；无选区时不能返回整页文档。
+完整 Windows 构建需要 Windows SDK（包括 `windows.h`），macOS 上的 UIA 模块目标编译
+不能代替完整 Windows 构建或实机手势验收。

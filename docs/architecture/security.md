@@ -1,6 +1,6 @@
 # 安全边界
 
-Rust/Tauri 是本地文件、窗口与 sidecar 权限的可信边界。WebView 和 Node sidecar 都不能绕过它直接取得任意用户文件写权限。
+Rust/Tauri 是本地文件、窗口与 Agent 权限的可信边界。WebView、Rig 和模型输出都不能绕过它直接取得用户文件写权限。
 
 ## 文件与图片
 
@@ -8,13 +8,15 @@ Rust/Tauri 是本地文件、窗口与 sidecar 权限的可信边界。WebView �
 
 ## AI 编辑
 
-sidecar 的虚拟工作区请求由 Rust 重新解析当前 project root，只允许 `_inbox.md`、`_tasks.md` 和根目录 piece；目录分隔符、穿越、未知 `_` 文件、绝对路径及 symlink 逃逸均被拒绝。Skill 绝对路径只允许当前 generation 已授权目录中的普通 UTF-8 文件，并限制为 1 MiB。
+Agent 工具由 Rust 重新解析当前 project root，只允许 `_inbox.md`、`_tasks.md` 和根目录 piece；目录分隔符、穿越、未知 `_` 文件、绝对路径及 symlink 逃逸均被拒绝。Skill 绝对路径只允许当前 snapshot 已授权目录中的普通 UTF-8 文件，并限制为 1 MiB。
+
+Agent 会话文件同样由 Rust 绑定：只能打开历史索引指向、且 canonicalize 后位于当前会话目录直属层级的 `.jsonl` 文件，前端不能借由自定义路径读取目录外文件。
 
 本地 mutation 遵循 `tool_call → prepare → review → lease → commit`。批准 lease 随机、短期、一次性，并绑定 conversation 与 `toolCallId`；Rust 在提交时再次检查磁盘旧内容。`create_piece` 是唯一可对应 create 的模型工具，只允许新 piece 且不能覆盖竞态创建的同名文件；`write` 只能对应已有笔记 rewrite，snapshot 只允许现有 piece rewrite。拒绝和错误均返回关联结果。Loose root Markdown 不属于 Agent 能力边界。
 
 ## AI 网络读取
 
-`web_search` 与 `web_fetch` 是可见但无需确认的只读工具。网页、搜索摘要和引用卡内容均是不可信资料，不能覆盖系统或用户指令。`web_fetch` 只允许 HTTP(S)，拒绝 URL 凭据、本机、私网、link-local 和非公网 IPv4/IPv6；每个重定向目标都会重新校验，并限制超时、重定向次数、响应类型、字节数和模型可见文本长度。
+`web_search` 与 `web_fetch` 是可见但无需确认的只读工具。网页、搜索摘要和引用卡内容均是不可信资料，不能覆盖系统或用户指令。`web_fetch` 禁用代理，只允许 HTTP(S)，解析并固定经检查的公网地址，拒绝 URL 凭据、本机、私网、link-local 和保留 IPv4/IPv6；每个重定向目标都会重新校验，并限制超时、重定向次数、响应类型、字节数和模型可见文本长度。
 
 ## WebView 与外链
 

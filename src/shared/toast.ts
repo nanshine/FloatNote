@@ -56,7 +56,7 @@ function ensureStyle(): void {
 }
 
 /** Show a brief toast at the bottom-center of the window; auto-dismisses. */
-export function showToast(message: string): void {
+export function showToast(message: string, action?: { label: string; onClick: () => void }): void {
   ensureStyle();
   if (dismissTimer !== null) {
     window.clearTimeout(dismissTimer);
@@ -66,6 +66,16 @@ export function showToast(message: string): void {
   const el = document.createElement("div");
   el.className = "toast";
   el.textContent = message;
+  el.setAttribute("role", "status");
+  if (action) {
+    el.style.pointerEvents = "auto";
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = action.label;
+    button.style.cssText = "margin-left:12px;color:inherit;background:transparent;border:0;text-decoration:underline;cursor:pointer;font:inherit";
+    button.onclick = () => { el.remove(); action.onClick(); };
+    el.appendChild(button);
+  }
   document.body.appendChild(el);
   toastEl = el;
   dismissTimer = window.setTimeout(() => {

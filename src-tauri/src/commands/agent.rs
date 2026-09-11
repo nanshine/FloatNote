@@ -1,6 +1,4 @@
-use crate::agent::{
-    ActiveNote, HostToSidecar, MutationOperation, PromptRef, PromptSkill, WriteMode,
-};
+use crate::agent::{ActiveNote, AgentEvent, MutationOperation, PromptRef, PromptSkill, WriteMode};
 use crate::{
     config::{AiProviderConfig, AiProviderId},
     state::AppState,
@@ -19,74 +17,13 @@ pub(crate) async fn configure_agent(
     provider: AiProviderId,
     config: &AiProviderConfig,
 ) -> Result<(), String> {
-    let seq = state.agent_seq.fetch_add(1, Ordering::Relaxed) + 1;
-    let call_id = format!("cfg{seq}");
-    let (tx, rx) = tokio::sync::oneshot::channel();
     state
-        .pending_agent_configs
-        .lock()
-        .unwrap()
-        .insert(call_id.clone(), tx);
-    let send_result = {
-        let mut guard = state.agent.lock().unwrap();
-        match guard.as_mut() {
-            Some(agent) => agent.send(&HostToSidecar::Configure {
-                call_id: call_id.clone(),
-                provider,
-                model: config.model.clone(),
-                api_key: Some(config.api_key.clone()),
-                base_url: config.base_url.clone(),
-            }),
-            None => {
-                state.pending_agent_configs.lock().unwrap().remove(&call_id);
-                return Err("助手未连接".into());
-            }
-        }
-    };
-    if let Err(error) = send_result {
-        state.pending_agent_configs.lock().unwrap().remove(&call_id);
-        return Err(error.to_string());
-    }
-    match tokio::time::timeout(std::time::Duration::from_secs(5), rx).await {
-        Ok(Ok(result)) => result,
-        Ok(Err(_)) => Err("AI 提供商配置响应已丢弃".into()),
-        Err(_) => {
-            state.pending_agent_configs.lock().unwrap().remove(&call_id);
-            Err("AI 提供商配置超时，请重试".into())
-        }
-    }
+        .agent
+        .configure(crate::agent::build_agent_model(provider, config)?)
 }
 
 pub(crate) async fn clear_agent_configuration(state: &AppState) -> Result<(), String> {
-    let seq = state.agent_seq.fetch_add(1, Ordering::Relaxed) + 1;
-    let call_id = format!("cfg{seq}");
-    let (tx, rx) = tokio::sync::oneshot::channel();
-    state
-        .pending_agent_configs
-        .lock()
-        .unwrap()
-        .insert(call_id.clone(), tx);
-    let send_result = state
-        .agent
-        .lock()
-        .unwrap()
-        .as_mut()
-        .ok_or("助手未连接")?
-        .send(&HostToSidecar::ClearConfiguration {
-            call_id: call_id.clone(),
-        });
-    if let Err(error) = send_result {
-        state.pending_agent_configs.lock().unwrap().remove(&call_id);
-        return Err(error.to_string());
-    }
-    match tokio::time::timeout(std::time::Duration::from_secs(5), rx).await {
-        Ok(Ok(result)) => result,
-        Ok(Err(_)) => Err("AI 提供商清理响应已丢弃".into()),
-        Err(_) => {
-            state.pending_agent_configs.lock().unwrap().remove(&call_id);
-            Err("AI 提供商清理超时，请重试".into())
-        }
-    }
+    state.agent.clear_configuration()
 }
 
 #[tauri::command]
@@ -110,18 +47,14 @@ pub fn agent_send(
     }
     let seq = state.agent_seq.fetch_add(1, Ordering::Relaxed) + 1;
     let request_id = format!("r{seq}");
-    let mut guard = state.agent.lock().unwrap();
-    let agent = guard.as_mut().ok_or("助手未连接")?;
-    agent
-        .send(&HostToSidecar::Prompt {
-            request_id: request_id.clone(),
-            conversation_id: conversation_id.clone(),
-            user_text,
-            references,
-            skill,
-        })
-        .map_err(|error| error.to_string())?;
-    drop(guard);
+    state.agent.prompt(
+        app.clone(),
+        request_id.clone(),
+        conversation_id.clone(),
+        user_text,
+        references,
+        skill,
+    )?;
     if let Ok(store) = crate::chat_history::ChatHistoryStore::default_for_user() {
         if let Err(error) = store.touch_activity(&conversation_id) {
             eprintln!("failed to update chat activity for {conversation_id}: {error}");
@@ -138,102 +71,92 @@ pub async fn agent_rewind(
     conversation_id: String,
     user_entry_id: String,
 ) -> Result<(), String> {
-    let seq = state.agent_seq.fetch_add(1, Ordering::Relaxed) + 1;
-    let call_id = format!("rw{seq}");
-    let (tx, rx) = tokio::sync::oneshot::channel();
-    state
-        .pending_agent_rewinds
-        .lock()
-        .unwrap()
-        .insert(call_id.clone(), tx);
-    let sent = state
-        .agent
-        .lock()
-        .unwrap()
-        .as_mut()
-        .ok_or("助手未连接")?
-        .send(&HostToSidecar::Rewind {
-            call_id: call_id.clone(),
-            conversation_id,
-            user_entry_id,
-        });
-    if let Err(error) = sent {
-        state.pending_agent_rewinds.lock().unwrap().remove(&call_id);
-        return Err(error.to_string());
-    }
-    match tokio::time::timeout(std::time::Duration::from_secs(5), rx).await {
-        Ok(Ok(result)) => result,
-        Ok(Err(_)) => Err("对话回退响应已丢弃".into()),
-        Err(_) => {
-            state.pending_agent_rewinds.lock().unwrap().remove(&call_id);
-            Err("对话回退超时，请重试".into())
-        }
-    }
+    let _ = state.agent.rewind(&conversation_id, &user_entry_id)?;
+    Ok(())
 }
 
 #[tauri::command]
 pub async fn agent_new_session(
+    app: tauri::AppHandle,
     state: State<'_, AppState>,
     conversation_id: String,
     cwd: String,
     session_dir: String,
 ) -> Result<(), String> {
-    let seq = state.agent_seq.fetch_add(1, Ordering::Relaxed) + 1;
-    let call_id = format!("ns{seq}");
-    let (tx, rx) = tokio::sync::oneshot::channel();
-    state
-        .pending_agent_sessions
-        .lock()
-        .unwrap()
-        .insert(call_id.clone(), tx);
-    let sent = match state.agent.lock().unwrap().as_mut() {
-        Some(agent) => agent.send(&HostToSidecar::NewSession {
-            call_id: call_id.clone(),
-            conversation_id,
-            cwd,
-            session_dir,
-        }),
-        None => Err(std::io::Error::new(
-            std::io::ErrorKind::NotConnected,
-            "助手未连接",
-        )),
-    };
-    if let Err(error) = sent {
+    let store = crate::chat_history::ChatHistoryStore::default_for_user()
+        .map_err(|error| error.to_string())?;
+    let requested_dir = std::path::Path::new(&session_dir)
+        .canonicalize()
+        .map_err(|error| error.to_string())?;
+    let expected_dir = store
+        .session_directory()
+        .canonicalize()
+        .map_err(|error| error.to_string())?;
+    if requested_dir != expected_dir {
+        return Err("会话目录不属于 FloatNote 聊天历史".into());
+    }
+    let (session_file, messages) =
         state
-            .pending_agent_sessions
-            .lock()
-            .unwrap()
-            .remove(&call_id);
-        return Err(error.to_string());
-    }
-    match tokio::time::timeout(std::time::Duration::from_secs(10), rx).await {
-        Ok(Ok(result)) => result,
-        Ok(Err(_)) => Err("创建 AI 会话响应已丢弃".into()),
-        Err(_) => {
-            state
-                .pending_agent_sessions
-                .lock()
-                .unwrap()
-                .remove(&call_id);
-            Err("创建 AI 会话超时，请重试".into())
-        }
-    }
+            .agent
+            .new_session(conversation_id.clone(), cwd, session_dir)?;
+    crate::agent::sync_session_history(
+        &app,
+        &conversation_id,
+        std::path::Path::new(&session_file),
+        &messages,
+    );
+    app.emit(
+        "agent://event",
+        AgentEvent::SessionOpened {
+            conversation_id,
+            session_file,
+            messages,
+        },
+    )
+    .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
 pub fn agent_open_session(
+    app: tauri::AppHandle,
     state: State<AppState>,
     conversation_id: String,
     session_file: String,
 ) -> Result<(), String> {
-    let mut guard = state.agent.lock().unwrap();
-    let agent = guard.as_mut().ok_or("助手未连接")?;
-    agent
-        .send(&HostToSidecar::OpenSession {
+    let store = crate::chat_history::ChatHistoryStore::default_for_user()
+        .map_err(|error| error.to_string())?;
+    let indexed = store
+        .open(&conversation_id)
+        .map_err(|error| error.to_string())?
+        .ok_or("对话不存在")?;
+    let candidate = store
+        .validate_session_file(std::path::Path::new(&session_file))
+        .map_err(|error| error.to_string())?;
+    let expected = store
+        .validate_session_file(std::path::Path::new(&indexed.session_file))
+        .map_err(|error| error.to_string())?;
+    if candidate != expected {
+        return Err("会话文件与历史索引不匹配".into());
+    }
+    let (session_file, messages) = state.agent.open_session(
+        conversation_id.clone(),
+        candidate.to_string_lossy().into_owned(),
+    )?;
+    crate::agent::sync_session_history(
+        &app,
+        &conversation_id,
+        std::path::Path::new(&session_file),
+        &messages,
+    );
+    app.emit(
+        "agent://event",
+        AgentEvent::SessionOpened {
             conversation_id,
             session_file,
-        })
-        .map_err(|error| error.to_string())
+            messages,
+        },
+    )
+    .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -241,16 +164,24 @@ pub fn agent_discard_session(
     state: State<AppState>,
     conversation_id: String,
 ) -> Result<(), String> {
+    let pending = state
+        .mutations
+        .lock()
+        .unwrap()
+        .pending_request_ids(&conversation_id);
     state
         .mutations
         .lock()
         .unwrap()
         .clear_conversation(&conversation_id);
-    if let Some(agent) = state.agent.lock().unwrap().as_mut() {
-        agent
-            .send(&HostToSidecar::DiscardSession { conversation_id })
-            .map_err(|error| error.to_string())?;
+    let mut permissions = state.pending_permissions.lock().unwrap();
+    for id in pending {
+        if let Some(sender) = permissions.remove(&id) {
+            let _ = sender.send(Err("对话已关闭".into()));
+        }
     }
+    drop(permissions);
+    state.agent.discard_session(&conversation_id);
     Ok(())
 }
 
@@ -279,20 +210,6 @@ pub async fn toggle_assistant(state: State<'_, AppState>) -> Result<AssistantSta
     Ok(AssistantState { open })
 }
 
-#[derive(serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AgentStatus {
-    pub ready: bool,
-    pub error: Option<String>,
-}
-
-#[tauri::command]
-pub fn get_agent_status(state: State<AppState>) -> AgentStatus {
-    let ready = *state.agent_ready.lock().unwrap();
-    let error = state.agent_spawn_error.lock().unwrap().clone();
-    AgentStatus { ready, error }
-}
-
 #[tauri::command]
 pub fn set_active_note(
     state: State<AppState>,
@@ -316,11 +233,25 @@ pub fn get_active_note(state: State<AppState>) -> Option<ActiveNote> {
 
 #[tauri::command]
 pub fn agent_cancel(state: State<AppState>, request_id: String) -> Result<(), String> {
-    let mut guard = state.agent.lock().unwrap();
-    let agent = guard.as_mut().ok_or("助手未连接")?;
-    agent
-        .send(&HostToSidecar::Cancel { request_id })
-        .map_err(|error| error.to_string())
+    if let Some(conversation_id) = state.agent.cancel(&request_id) {
+        let pending = state
+            .mutations
+            .lock()
+            .unwrap()
+            .pending_request_ids(&conversation_id);
+        state
+            .mutations
+            .lock()
+            .unwrap()
+            .clear_conversation(&conversation_id);
+        let mut permissions = state.pending_permissions.lock().unwrap();
+        for id in pending {
+            if let Some(sender) = permissions.remove(&id) {
+                let _ = sender.send(Err("工具调用已取消".into()));
+            }
+        }
+    }
+    Ok(())
 }
 
 #[derive(serde::Serialize, Debug, PartialEq, Eq)]
@@ -349,14 +280,7 @@ pub fn agent_list_skills(
 pub fn agent_reload_skills(app: tauri::AppHandle, state: State<AppState>) -> Result<(), String> {
     let paths = crate::agent::skill_paths_for_app(&app);
     let disabled_skill_names = state.config.lock().unwrap().disabled_skills.clone();
-    let mut guard = state.agent.lock().unwrap();
-    let agent = guard.as_mut().ok_or("助手未连接")?;
-    agent
-        .send(&HostToSidecar::SetSkillPaths {
-            skill_paths: paths,
-            disabled_skill_names,
-        })
-        .map_err(|e| e.to_string())
+    state.agent.reload_skills(paths, disabled_skill_names)
 }
 
 #[tauri::command]
@@ -760,7 +684,7 @@ mod skill_catalog_tests {
     }
 
     #[test]
-    fn catalog_combines_builtin_and_imported_skills_without_a_sidecar() {
+    fn catalog_combines_builtin_and_imported_skills_without_model_access() {
         let dir = crate::testutil::tempdir();
         let builtin = dir.path().join("builtin");
         let imported = dir.path().join("imported");
@@ -937,15 +861,14 @@ pub fn resolve_permission(
     if let Some(mutation) = mutation {
         if decision != "allow" {
             state.mutations.lock().unwrap().deny(&request_id);
-            let _ = state.agent.lock().unwrap().as_mut().map(|agent| {
-                agent.send(&HostToSidecar::MutationReviewResult {
-                    call_id: mutation.call_id,
-                    allowed: false,
-                    lease: None,
-                    write_mode: None,
-                    error: None,
-                })
-            });
+            if let Some(sender) = state
+                .pending_permissions
+                .lock()
+                .unwrap()
+                .remove(&request_id)
+            {
+                let _ = sender.send(Err("用户拒绝了此操作".into()));
+            }
             return Ok(());
         }
         let selected_mode = match write_mode.as_str() {
@@ -960,29 +883,27 @@ pub fn resolve_permission(
             "snapshot" => {
                 state.mutations.lock().unwrap().deny(&request_id);
                 let message = "该操作不允许保存快照".to_string();
-                let _ = state.agent.lock().unwrap().as_mut().map(|agent| {
-                    agent.send(&HostToSidecar::MutationReviewResult {
-                        call_id: mutation.call_id,
-                        allowed: false,
-                        lease: None,
-                        write_mode: None,
-                        error: Some(message.clone()),
-                    })
-                });
+                if let Some(sender) = state
+                    .pending_permissions
+                    .lock()
+                    .unwrap()
+                    .remove(&request_id)
+                {
+                    let _ = sender.send(Err(message.clone()));
+                }
                 return Err(message);
             }
             _ => {
                 state.mutations.lock().unwrap().deny(&request_id);
                 let message = "不支持的写入模式".to_string();
-                let _ = state.agent.lock().unwrap().as_mut().map(|agent| {
-                    agent.send(&HostToSidecar::MutationReviewResult {
-                        call_id: mutation.call_id,
-                        allowed: false,
-                        lease: None,
-                        write_mode: None,
-                        error: Some(message.clone()),
-                    })
-                });
+                if let Some(sender) = state
+                    .pending_permissions
+                    .lock()
+                    .unwrap()
+                    .remove(&request_id)
+                {
+                    let _ = sender.send(Err(message.clone()));
+                }
                 return Err(message);
             }
         };
@@ -993,27 +914,29 @@ pub fn resolve_permission(
         ) {
             Ok(lease) => lease,
             Err(message) => {
-                let _ = state.agent.lock().unwrap().as_mut().map(|agent| {
-                    agent.send(&HostToSidecar::MutationReviewResult {
-                        call_id: mutation.call_id,
-                        allowed: false,
-                        lease: None,
-                        write_mode: None,
-                        error: Some(message.clone()),
-                    })
-                });
+                if let Some(sender) = state
+                    .pending_permissions
+                    .lock()
+                    .unwrap()
+                    .remove(&request_id)
+                {
+                    let _ = sender.send(Err(message.clone()));
+                }
                 return Err(message);
             }
         };
-        let _ = state.agent.lock().unwrap().as_mut().map(|agent| {
-            agent.send(&HostToSidecar::MutationReviewResult {
-                call_id: mutation.call_id,
-                allowed: true,
-                lease: Some(lease),
-                write_mode: Some(selected_mode),
-                error: None,
-            })
-        });
+        if let Some(sender) = state
+            .pending_permissions
+            .lock()
+            .unwrap()
+            .remove(&request_id)
+        {
+            let mode = match selected_mode {
+                WriteMode::Direct => "direct",
+                WriteMode::Snapshot => "snapshot",
+            };
+            let _ = sender.send(Ok((lease, mode.into())));
+        }
         return Ok(());
     }
 

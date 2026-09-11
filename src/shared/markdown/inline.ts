@@ -2,16 +2,13 @@ import { markdownLanguage } from "@codemirror/lang-markdown";
 import { Autolink, MarkdownParser, Strikethrough } from "@lezer/markdown";
 import type { SyntaxNode } from "@lezer/common";
 import { escapeHtml } from "../escape";
+import { isSafeUrl } from "./safe-url";
+export { isSafeUrl } from "./safe-url";
 
 const inlineParser = (markdownLanguage.parser as MarkdownParser).configure([Strikethrough, Autolink]);
 
 function safeHref(url: string): string {
   return isSafeUrl(url) ? url.trim() : "";
-}
-
-export function isSafeUrl(url: string): boolean {
-  const value = url.trim();
-  return value !== "" && /^(https?:|mailto:|#|\/|\.\/|\.\.\/)/i.test(value);
 }
 
 function renderChildren(node: SyntaxNode, text: string): string {

@@ -3,6 +3,7 @@ import {
   inboxPath,
   inboxEntry,
   scheduleSave,
+  saveBeforeUpdate,
   saveImmediate,
   settleAllPendingWrites,
   settlePendingWrites,
@@ -286,5 +287,23 @@ describe("save scheduling", () => {
 
     expect(gaveUp).not.toHaveBeenCalled();
     expect(isDirty("/a.md")).toBe(false);
+  });
+});
+
+describe("update save barrier", () => {
+  beforeEach(() => { __resetSaveStateForTests(); mockedInvoke.mockReset(); });
+  afterEach(() => { __resetSaveStateForTests(); });
+  it("persists queued content before permitting installation", async () => {
+    mockedInvoke.mockResolvedValue(okWrite(42));
+    scheduleSave("/a.md", "latest draft");
+    await saveBeforeUpdate();
+    expect(isDirty("/a.md")).toBe(false);
+    expect(mockedInvoke).toHaveBeenCalledWith("write_note", expect.objectContaining({ content: "latest draft" }));
+  });
+  it("blocks installation and retains edits after a disk failure", async () => {
+    mockedInvoke.mockRejectedValue(new Error("disk full"));
+    scheduleSave("/a.md", "keep this");
+    await expect(saveBeforeUpdate()).rejects.toThrow("仍有笔记未保存");
+    expect(isDirty("/a.md")).toBe(true);
   });
 });

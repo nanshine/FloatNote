@@ -2,6 +2,7 @@
 import { describe, it, expect, vi } from "vitest";
 import {
   currentMentionQuery,
+  mentionPresentation,
   mountMentionPicker,
   renderFileList,
   type MentionFile,
@@ -15,11 +16,20 @@ const FILES: MentionFile[] = [
 ];
 
 describe("renderFileList", () => {
-  it("lists all files with name + kind tag when query is empty", () => {
+  it("lists files with product names instead of exposing system filenames", () => {
     const el = renderFileList(FILES, "");
     expect(el.querySelectorAll(".assistant-mention-item")).toHaveLength(4);
-    expect(el.querySelector(".assistant-mention-name")?.textContent).toBe("_inbox");
+    expect(el.querySelector(".assistant-mention-name")?.textContent).toBe("采集区");
     expect(el.querySelector(".assistant-mention-kind")?.textContent).toBe("采集");
+    expect(el.textContent).not.toContain("_inbox");
+    expect(el.textContent).not.toContain("_tasks");
+  });
+
+  it("keeps system filenames as hidden searchable identifiers", () => {
+    const inbox = mentionPresentation(FILES[0]);
+    expect(inbox).toMatchObject({ displayName: "采集区", kindLabel: "采集" });
+    expect(inbox.keywords).toContain("_inbox");
+    expect(renderFileList(FILES, "inbox").textContent).toContain("采集区");
   });
 
   it("filters by name substring (case-insensitive)", () => {

@@ -9,7 +9,7 @@ import { mountPermissionBubble, type PermissionRequest } from "./permission-bubb
 import { projectPermission } from "./permission-model.js";
 import type { SkillSummary } from "./skill-picker.js";
 import type { MentionFile } from "./mention-picker.js";
-import { mountComposer, type ComposerHandle } from "./input/composer";
+import { mountComposer, type ComposerHandle } from "./input/structured-composer";
 import { composePromptPayload, type PromptPayload } from "./input/submit";
 import {
   type ChatEvent,
@@ -19,8 +19,11 @@ import {
   reduceEvents,
 } from "./render";
 import { beginUserMessageEdit, reconcileMessages } from "./blocks";
+import { createStarters } from "./starters";
 import { createButton } from "../shared/ui/button";
 import { showToast } from "../shared/toast";
+import type { AiReadiness } from "../platform/ai-readiness";
+import { openAiSettings } from "../platform/ai-readiness";
 import type { AssistantOutputMode } from "../platform/assistant-output";
 
 /**
@@ -55,6 +58,9 @@ export interface AssistantDeps {
   listFiles: (scope: ChatScope) => Promise<MentionFile[]>;
   getOutputMode?: () => Promise<AssistantOutputMode>;
   subscribeOutputMode?: (callback: (mode: AssistantOutputMode) => void) => UnlistenFn | Promise<UnlistenFn>;
+  getReadiness?: () => Promise<AiReadiness>;
+  retryConfiguration?: () => Promise<AiReadiness>;
+  openSettings?: () => Promise<void>;
 }
 
 export interface AssistantHandle {
@@ -95,11 +101,22 @@ export interface AssistantHandle {
   isMentionMenuOpen: () => boolean;
   /** 关闭 `@` 文件提及下拉（Esc 链中置于 skill 菜单之后、历史浮层之前）。 */
   closeMentionMenu: () => void;
+  refreshReadiness: () => Promise<void>;
+  setReadinessPreview: (value: AiReadiness | null) => void;
 }
 
 export function mountAssistant(root: HTMLElement, deps: AssistantDeps): AssistantHandle {
   let state: ChatState = emptyChat();
   let outputMode: AssistantOutputMode = "compact";
+  let readiness: AiReadiness | null = deps.getReadiness ? null : { status: "ready" };
+  let readinessPreview: AiReadiness | null = null;
+  let readinessRevision = 0;
+  let setupDismissed = false;
+  let setupNotice = "";
+  let destroyed = false;
+  const displayReadiness = () => readinessPreview ?? readiness;
+  const setupVisible = () => displayReadiness()?.status !== "ready" && !setupDismissed;
+  let composerEmpty = true;
 
   root.classList.add("assistant");
   const newConversationButton = createButton({
@@ -173,15 +190,120 @@ export function mountAssistant(root: HTMLElement, deps: AssistantDeps): Assistan
   scroll.addEventListener("scroll", updateBottomFollowing, { passive: true });
   scrollBottomBtn.addEventListener("click", resumeBottomFollowing);
 
+  const suggestions = createStarters([
+    () => composer.openFileStarter(),
+    () => composer.openSkillPicker(),
+    () => composer.fillStarter("请先不要给结论，通过追问帮我想清楚这个问题："),
+  ], () => composer.focus());
+  root.insertBefore(suggestions.el, root.querySelector(".assistant-dock"));
+
   function rerender() {
     // 定向增量更新：已完成消息/块节点复用，不重放进场动画 → 消灭闪烁。
     reconcileMessages(scroll, state.messages, msgMap, outputMode, followingBottom);
+    scroll.querySelector(".assistant-empty")?.remove();
+    const hasMessages = state.messages.length > 0;
+    if (setupVisible()) scroll.append(renderEmptyAssistant());
+    suggestions.update(!hasMessages && composerEmpty && displayReadiness()?.status === "ready");
+    const closesSetup = setupVisible() && !hasMessages;
+    newBtn.setAttribute("aria-label", closesSetup ? "关闭配置提示" : "新对话");
+    newBtn.title = closesSetup ? "关闭配置提示" : "新对话";
+    newBtn.innerHTML = `<i class="ph ${closesSetup ? "ph-x" : "ph-plus"}"></i>`;
+    newBtn.disabled = isChatStreaming(state);
     // 无消息时不渲染聊天历史容器，避免 floating 态出现空的卡片/气泡（inline 态无副作用）。
     root.classList.toggle("has-messages", scroll.childElementCount > 0);
     for (const action of scroll.querySelectorAll<HTMLButtonElement>(".chat-retry-btn, .chat-edit-btn")) {
       action.disabled = isChatStreaming(state);
     }
     updateSendMode();
+  }
+
+  function renderEmptyAssistant(): HTMLElement {
+    const empty = document.createElement("section");
+    empty.className = "assistant-empty";
+    const status = displayReadiness();
+    if (status?.status !== "ready") {
+      empty.classList.add("assistant-setup");
+      empty.setAttribute("role", "status");
+      const messages = {
+        unconfigured: ["苏格拉底 AI", "它可以读取采集区和作品，帮你追问、整理、规划或共同写作。连接 AI 服务后即可开始使用。", "配置 AI 服务"],
+        disabled: ["启用 AI 服务", "你已配置 AI 服务，启用一个服务后即可开始对话。", "前往启用"],
+        incomplete: ["检查 AI 服务配置", "当前 AI 服务配置不完整，请检查后继续。", "检查配置"],
+        runtime_unavailable: ["AI 服务暂时无法启动", "服务配置已保存，但运行时尚未就绪，请重试或检查设置。", "重试"],
+      };
+      const copy = status ? messages[status.status] : ["正在检查 AI 服务", "请稍候…", ""];
+      empty.innerHTML = `<i class="ph ph-sparkle" aria-hidden="true"></i><h2></h2><p></p>`;
+      empty.querySelector("h2")!.textContent = copy[0];
+      empty.querySelector("p")!.textContent = copy[1];
+      if (state.messages.length) {
+        const close = document.createElement("button");
+        close.type = "button";
+        close.className = "assistant-setup-close";
+        close.setAttribute("aria-label", "关闭配置提示");
+        close.innerHTML = `<i class="ph ph-x" aria-hidden="true"></i>`;
+        close.onclick = dismissSetup;
+        empty.append(close);
+      }
+      const notice = document.createElement("p");
+      notice.className = "assistant-setup-notice";
+      notice.textContent = setupNotice || (status?.status === "incomplete" ? status.message : "");
+      if (notice.textContent) empty.append(notice);
+      const addAction = (label: string, action: () => Promise<void>, primary = true) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = primary ? "fn-btn fn-btn--primary" : "fn-btn fn-btn--secondary";
+        button.textContent = label;
+        button.onclick = async () => {
+          button.disabled = true;
+          try { await action(); }
+          catch { setupNotice = "操作未完成，请重试；输入内容已保留。"; rerender(); }
+          finally { button.disabled = false; }
+        };
+        empty.append(button);
+      };
+      const openSettings = () => (deps.openSettings ?? openAiSettings)();
+      if (status?.status === "runtime_unavailable") {
+        addAction(copy[2], async () => { await deps.retryConfiguration?.(); await refreshReadiness(); });
+        addAction("检查设置", openSettings, false);
+      } else if (status) addAction(copy[2], openSettings);
+      else if (setupNotice) addAction("重试", refreshReadiness);
+      return empty;
+    }
+
+    return empty;
+  }
+
+  function dismissSetup() {
+    setupDismissed = true;
+    rerender();
+  }
+
+  async function refreshReadiness() {
+    const revision = ++readinessRevision;
+    try {
+      const next = await deps.getReadiness?.() ?? { status: "ready" as const };
+      if (destroyed || revision !== readinessRevision) return;
+      if (readiness?.status !== next.status) setupDismissed = false;
+      readiness = next;
+      setupNotice = "";
+      rerender();
+    } catch {
+      if (destroyed || revision !== readinessRevision) return;
+      readiness = null;
+      setupNotice = "无法读取 AI 服务状态，请重试。";
+      rerender();
+    }
+  }
+
+  async function ensureReady(): Promise<boolean> {
+    // Preview affects presentation only; sending always checks the real service.
+    await refreshReadiness();
+    if (readiness?.status === "ready") return true;
+    readinessPreview = null;
+    setupDismissed = false;
+    setupNotice = readiness ? "内容已保留，完成配置后即可发送。" : "无法读取 AI 服务状态，请重试；输入内容已保留。";
+    rerender();
+    resumeBottomFollowing();
+    return false;
   }
 
   function dispatch(event: ChatEvent) {
@@ -221,8 +343,11 @@ export function mountAssistant(root: HTMLElement, deps: AssistantDeps): Assistan
   }
 
   let inputOpen = false;
+  let inputFocusRevision = 0;
+  inputWrap.addEventListener("focusin", () => { inputFocusRevision += 1; });
   let activeRequestId: string | null = null;
   function setInputOpen(open: boolean) {
+    if (open && !inputOpen) void refreshReadiness();
     inputOpen = open;
     inputWrap.classList.toggle("open", open);
     // floating 态下，展开/收起整块浮层（聊天历史卡片）由这个类驱动；inline 态无副作用。
@@ -231,8 +356,18 @@ export function mountAssistant(root: HTMLElement, deps: AssistantDeps): Assistan
     bot.classList.remove("nudge");
     void bot.offsetWidth; // 强制重排以重启动画
     bot.classList.add("nudge");
-    if (open) setTimeout(() => composer.focus(), 160);
-    else (document.activeElement instanceof HTMLElement ? document.activeElement : null)?.blur();
+    const focusRevision = ++inputFocusRevision;
+    if (open) {
+      requestAnimationFrame(() => {
+        if (destroyed || !inputOpen || focusRevision !== inputFocusRevision) return;
+        // Focusing while the flex item is expanding can scroll its clipped
+        // ancestors and leave WebKit with a displaced composer after reopening.
+        const transitions = inputWrap.getAnimations?.() ?? [];
+        void Promise.all(transitions.map((animation) => animation.finished.catch(() => {}))).then(() => {
+          if (!destroyed && inputOpen && focusRevision === inputFocusRevision) composer.focus();
+        });
+      });
+    } else (document.activeElement instanceof HTMLElement ? document.activeElement : null)?.blur();
     if (!open) closeHistoryPopover();
   }
 
@@ -278,6 +413,8 @@ export function mountAssistant(root: HTMLElement, deps: AssistantDeps): Assistan
       showToast("当前没有打开的项目或文档，输入内容已保留");
       return false;
     }
+    const beforeSubmission = state;
+    let createdConversation: ChatConversation | null = null;
     const submittedScopeToken = scopeToken;
     let expectedConversationToken = conversationToken;
     const isCurrentSubmission = (conversationId?: string) =>
@@ -285,11 +422,13 @@ export function mountAssistant(root: HTMLElement, deps: AssistantDeps): Assistan
       && conversationToken === expectedConversationToken
       && (!conversationId || activeConversation?.id === conversationId);
     try {
+      if (!await ensureReady() || !isCurrentSubmission()) return false;
       let conversation = activeConversation;
       if (!conversation) {
         const created = await deps.createConversation(scope);
         if (!isCurrentSubmission()) return false;
         conversation = created;
+        createdConversation = created;
         setActiveConversation(conversation);
         expectedConversationToken = conversationToken;
       }
@@ -303,6 +442,18 @@ export function mountAssistant(root: HTMLElement, deps: AssistantDeps): Assistan
     } catch (err) {
       if (!isCurrentSubmission()) return false;
       const message = err instanceof Error ? err.message : String(err);
+      if (message.includes("尚未配置或启用 AI 提供商") || message.includes("尚未启用 AI 提供商") || message === "agent not configured") {
+        await ensureReady();
+        if (!isCurrentSubmission()) return false;
+        if (createdConversation) {
+          try { await deps.rollbackConversation(createdConversation); } catch { /* best-effort compensation */ }
+          if (!isCurrentSubmission()) return false;
+          setActiveConversation(null);
+        }
+        state = beforeSubmission;
+        rerender();
+        return false;
+      }
       dispatch({
         type: "error",
         requestId: null,
@@ -331,7 +482,9 @@ export function mountAssistant(root: HTMLElement, deps: AssistantDeps): Assistan
 
   async function resendUserMessage(messageId: string, text: string, references: PromptPayload["references"]): Promise<void> {
     if (!activeConversation || isChatStreaming(state)) return;
+    const token = conversationToken;
     try {
+      if (!await ensureReady() || token !== conversationToken || !activeConversation) return;
       const messageIndex = state.messages.findIndex(
         (entry) => entry.role === "user" && entry.id === messageId,
       );
@@ -356,23 +509,23 @@ export function mountAssistant(root: HTMLElement, deps: AssistantDeps): Assistan
   }
 
   async function startNewConversation() {
-    const scope = currentScope;
-    if (!scope) return;
+    if (!currentScope || isChatStreaming(state)) return;
+    ++scopeToken;
     closeHistoryPopover();
-    try {
-      const conversation = await deps.createConversation(scope);
-      setActiveConversation(conversation, true);
-      setInputOpen(true);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      dispatch({ type: "error", requestId: null, message });
-    }
+    setActiveConversation(null);
+    state = emptyChat();
+    suggestions.resetForNewConversation();
+    setupDismissed = false;
+    rerender();
+    setInputOpen(true);
+    await refreshReadiness();
   }
 
   async function startConversationWithPrompt(
     scope: ChatScope,
     prompt: string,
   ): Promise<{ conversation: ChatConversation; requestId: string }> {
+    if (!await ensureReady()) throw new Error("请先配置并启用 AI 服务，内容尚未发送");
     const previousConversation = activeConversation;
     const previousState = state;
     let created: ChatConversation | null = null;
@@ -469,12 +622,14 @@ export function mountAssistant(root: HTMLElement, deps: AssistantDeps): Assistan
     listSkills: deps.listSkills,
     onSubmit: submit,
     onEmptySend: () => { void toggleHistoryPopover(); },
-    onChange: () => {
+    onChange: (empty) => {
+      composerEmpty = empty;
       updateSendMode();
       updateExpandState();
       // CM6 的高度可能在 update listener 之后才由浏览器完成布局；下一帧复测，
       // 确保刚达到上限时放大按钮立即出现。
       requestAnimationFrame(updateExpandState);
+      queueMicrotask(rerender);
     },
     onLargeChange: () => {
       updateSendMode();
@@ -493,9 +648,13 @@ export function mountAssistant(root: HTMLElement, deps: AssistantDeps): Assistan
     else composer.expandLarge();
     updateExpandState();
   });
-  newBtn.addEventListener("click", () => { void startNewConversation(); });
+  newBtn.addEventListener("click", () => {
+    if (setupVisible() && !state.messages.length) dismissSetup();
+    else void startNewConversation();
+  });
 
   function onDocumentPointerDown(e: PointerEvent) {
+    if (e.target instanceof Node && !bot.contains(e.target)) inputFocusRevision += 1;
     if (historyPopover.hidden) return;
     const target = e.target;
     if (target instanceof Node && root.contains(target)) return;
@@ -505,10 +664,10 @@ export function mountAssistant(root: HTMLElement, deps: AssistantDeps): Assistan
   document.addEventListener("pointerdown", onDocumentPointerDown);
 
   rerender();
+  void refreshReadiness();
   updateSendMode();
   updateExpandState();
 
-  let destroyed = false;
   let unlisten: UnlistenFn | null = null;
   let outputModeUnlisten: UnlistenFn | null = null;
   let outputModeRevision = 0;
@@ -660,6 +819,7 @@ export function mountAssistant(root: HTMLElement, deps: AssistantDeps): Assistan
       outputModeUnlisten?.();
       permUnlisten?.();
       permBubble.destroy();
+      suggestions.destroy();
       composer.destroy();
       document.removeEventListener("pointerdown", onDocumentPointerDown);
       root.classList.remove("assistant");
@@ -743,6 +903,13 @@ export function mountAssistant(root: HTMLElement, deps: AssistantDeps): Assistan
     },
     closeMentionMenu() {
       composer.closePopover();
+    },
+    refreshReadiness,
+    setReadinessPreview(value) {
+      readinessPreview = value;
+      setupDismissed = false;
+      rerender();
+      if (!value) void refreshReadiness();
     },
   };
 }

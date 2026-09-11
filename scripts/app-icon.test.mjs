@@ -3,7 +3,11 @@ import { existsSync, readFileSync } from "node:fs";
 import test from "node:test";
 import { inflateSync } from "node:zlib";
 
+import { buildRoundedAppIcon, buildTrayTile } from "./icon-image.mjs";
+
 const iconUrl = new URL("../src-tauri/icons/app-icon.png", import.meta.url);
+const roundedIconUrl = new URL("../src-tauri/icons/app-icon-rounded.png", import.meta.url);
+const windowsTrayUrl = new URL("../src-tauri/icons/tray-windows.png", import.meta.url);
 const supersededSvgUrl = new URL(
   "../src-tauri/icons/app-icon.svg",
   import.meta.url,
@@ -140,6 +144,99 @@ test("package regenerates platform icons from the repaired PNG source", () => {
   const packageJson = JSON.parse(readFileSync(packageUrl, "utf8"));
   assert.equal(
     packageJson.scripts?.["icon:generate"],
-    "tauri icon src-tauri/icons/app-icon.png -o src-tauri/icons",
+    "node ./scripts/app-icon.mjs",
+  );
+});
+
+test("buildRoundedAppIcon insets the artwork on a transparent margin and rounds it", () => {
+  const size = 100;
+  const data = Buffer.alloc(size * size * 4);
+  for (let i = 0; i < size * size; i += 1) {
+    data[i * 4] = 247;
+    data[i * 4 + 1] = 241;
+    data[i * 4 + 2] = 234;
+    data[i * 4 + 3] = 255;
+  }
+  const out = buildRoundedAppIcon(
+    { width: size, height: size, data },
+    { radiusRatio: 0.12, paddingRatio: 0.06 },
+  );
+  const alpha = (x, y) => out.data[(y * size + x) * 4 + 3];
+  // paddingRatio 0.06 -> content spans [6,93]; the outer margin is transparent
+  assert.equal(alpha(0, 0), 0, "outer margin must be transparent");
+  assert.equal(alpha(3, 3), 0, "inside the transparent margin must be clear");
+  assert.ok(alpha(6, 6) < 128, "content corner must be rounded away");
+  assert.equal(alpha(size >> 1, size >> 1), 255, "centre must stay opaque");
+  assert.equal(alpha(size >> 1, 12), 255, "content edge midpoint must stay opaque");
+});
+
+test("rounded app icon output on disk has transparent corners and the warm paper centre", () => {
+  assert.equal(existsSync(roundedIconUrl), true, "expected generated rounded icon");
+  const image = decodePng(roundedIconUrl);
+  assert.deepEqual([image.width, image.height], [1024, 1024]);
+  assert.ok(image.pixel(0, 0).alpha < 8, "rounded icon corner must be transparent");
+  const centre = image.pixel(512, 512);
+  assert.equal(centre.alpha, 255);
+  assert.ok(
+    centre.red > 225 && centre.green > 215 && centre.blue > 205,
+    `expected the warm-white paper at centre, got ${JSON.stringify(centre)}`,
+  );
+});
+
+test("buildTrayTile renders a mid-tone tile with a lighter glyph", () => {
+  const size = 64;
+  const data = Buffer.alloc(size * size * 4);
+  for (let y = 0; y < size; y += 1) {
+    for (let x = 0; x < size; x += 1) {
+      const inside = Math.hypot(x - size / 2, y - size / 2) < size * 0.3;
+      const s = (y * size + x) * 4;
+      data[s] = data[s + 1] = data[s + 2] = 0;
+      data[s + 3] = inside ? 255 : 0;
+    }
+  }
+  const tile = buildTrayTile({ width: size, height: size, data }, size);
+  let opaque = 0;
+  let lumaSum = 0;
+  let min = 255;
+  let max = 0;
+  for (let i = 0; i < size * size; i += 1) {
+    const a = tile.data[i * 4 + 3];
+    if (a > 128) {
+      opaque += 1;
+      const luma =
+        0.299 * tile.data[i * 4] + 0.587 * tile.data[i * 4 + 1] + 0.114 * tile.data[i * 4 + 2];
+      lumaSum += luma;
+      if (luma < min) min = luma;
+      if (luma > max) max = luma;
+    }
+  }
+  assert.ok(opaque / (size * size) > 0.5, "tile must be mostly filled");
+  const mean = lumaSum / opaque;
+  assert.ok(mean > 60 && mean < 210, `tile mean luma should be mid-tone, got ${mean}`);
+  assert.ok(max - min > 60, "glyph must be clearly lighter than the tile");
+});
+
+test("Windows tray icon on disk is a legible coloured tile, not white", () => {
+  assert.equal(existsSync(windowsTrayUrl), true, "expected generated Windows tray icon");
+  const image = decodePng(windowsTrayUrl);
+  assert.equal(image.width, image.height, "tray icon must be square");
+  assert.ok(image.pixel(0, 0).alpha < 8, "tray tile corners must be transparent");
+
+  let opaque = 0;
+  let lumaSum = 0;
+  for (let y = 0; y < image.height; y += 1) {
+    for (let x = 0; x < image.width; x += 1) {
+      const p = image.pixel(x, y);
+      if (p.alpha > 128) {
+        opaque += 1;
+        lumaSum += 0.299 * p.red + 0.587 * p.green + 0.114 * p.blue;
+      }
+    }
+  }
+  assert.ok(opaque > 0, "tray icon must draw something");
+  const mean = lumaSum / opaque;
+  assert.ok(
+    mean > 60 && mean < 210,
+    `tray tile must be mid-tone so it shows on light panels and dark taskbars, got mean luma ${mean}`,
   );
 });

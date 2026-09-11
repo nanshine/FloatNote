@@ -7,7 +7,7 @@
     "frontendDist": "../dist",
     "devUrl": "http://localhost:1422",
     "beforeDevCommand": "npm run dev",
-    "beforeBuildCommand": "npm run package:sidecar && npm run build"
+    "beforeBuildCommand": "npm run build"
   },
   "app": {
     "withGlobalTauri": false,
@@ -20,7 +20,7 @@
         "height": 520,
         "minWidth": 360,
         "minHeight": 360,
-        "visible": false,
+        "visible": true,
         "alwaysOnTop": true,
         "titleBarStyle": "Overlay",
         "hiddenTitle": true,
@@ -59,7 +59,9 @@
       }
     ],
     "security": {
-      "capabilities": ["default"],
+      "capabilities": [
+        "default"
+      ],
       "csp": "default-src 'self'; connect-src 'self' ipc: http://ipc.localhost; img-src 'self' data: blob: floatnote-img:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; script-src 'self'"
     }
   },
@@ -74,14 +76,19 @@
       "icons/icon.ico"
     ],
     "resources": {
-      "resources/sidecar/": "sidecar/",
       "resources/skills/": "skills/"
     },
-    "externalBin": ["binaries/floatnote-node"],
     "macOS": {
       "signingIdentity": "-",
-      "hardenedRuntime": true,
-      "entitlements": "./Entitlements.plist"
+      "hardenedRuntime": true
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "",
+      "endpoints": [
+        "https://raw.githubusercontent.com/nanshine/FloatNote/updates/preview.json"
+      ]
     }
   }
 }

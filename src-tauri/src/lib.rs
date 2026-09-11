@@ -13,13 +13,17 @@ mod project;
 mod selection_intent;
 mod selection_monitor;
 mod selection_probe;
+mod selection_worker;
 mod shortcuts;
 mod source;
 mod state;
 mod trash;
 mod tray;
+mod updates;
 mod versions;
 mod watcher;
+#[cfg(target_os = "windows")]
+mod window_chrome;
 mod windows;
 
 #[cfg(test)]
@@ -27,14 +31,15 @@ mod testutil;
 
 use state::AppState;
 use std::sync::Mutex;
-use tauri::{Manager, WindowEvent};
+use tauri::{Emitter, Manager, WindowEvent};
 
 pub fn run() {
     // `mut` 仅在 debug 构建注册 wdio 插件时需要；release 下会被剥离，故关 unused_mut。
     #[allow(unused_mut)]
     let mut builder = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .manage(updates::UpdateState::default())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
@@ -86,8 +91,23 @@ pub fn run() {
 
     builder
         .setup(|app| {
+            let app_config_dir = app
+                .path()
+                .app_config_dir()
+                .unwrap_or_else(|_| std::env::temp_dir().join("FloatNote"));
+            let runtime_profile = paths::initialize_runtime(app_config_dir).clone();
+            if let Some(workspace) = runtime_profile.workspace_dir.as_ref() {
+                std::fs::create_dir_all(workspace)?;
+            }
             let path = commands::config_path(app.handle());
-            let config = config::load(&path);
+            let config_missing = !path.exists();
+            let mut config = config::load(&path);
+            if runtime_profile.is_debug && config_missing {
+                if let Some(workspace) = runtime_profile.workspace_dir.as_ref() {
+                    config.working_dir = Some(workspace.to_string_lossy().into_owned());
+                    config::save(&path, &config)?;
+                }
+            }
             let write_suppress = watcher::new_suppress_list();
             let file_watcher =
                 match watcher::FileWatcher::new(app.handle().clone(), write_suppress.clone()) {
@@ -97,38 +117,40 @@ pub fn run() {
                         None
                     }
                 };
+            let agent_service = std::sync::Arc::new(agent::AgentService::new());
+            let _ = agent_service.reload_skills(
+                agent::skill_paths_for_app(app.handle()),
+                config.disabled_skills.clone(),
+            );
+            if let Some(provider) = config.ai_settings.active_provider_id {
+                if let Some(profile) = config.ai_settings.providers.get(&provider) {
+                    match agent::build_agent_model(provider, profile) {
+                        Ok(model) => {
+                            let _ = agent_service.configure(model);
+                        }
+                        Err(error) => eprintln!("agent configuration failed: {error}"),
+                    }
+                }
+            }
+            app.manage(windows::SettingsNavigation::default());
             app.manage(AppState {
                 config: Mutex::new(config),
                 ai_settings_tx: tokio::sync::Mutex::new(()),
                 config_path: path,
-                agent: Mutex::new(None),
-                agent_ready: Mutex::new(false),
-                agent_spawn_error: Mutex::new(None),
+                runtime_profile,
+                onboarding_preview: Mutex::new(None),
+                agent: agent_service,
                 active_note: Mutex::new(None),
                 agent_seq: std::sync::atomic::AtomicU64::new(0),
                 watcher: Mutex::new(file_watcher),
                 write_suppress,
                 popup_cache: crate::popup::PopupCache::new(),
                 mutations: Mutex::new(agent::MutationStore::default()),
-                pending_skill_lists: Mutex::new(std::collections::HashMap::new()),
-                pending_agent_configs: Mutex::new(std::collections::HashMap::new()),
-                pending_agent_rewinds: Mutex::new(std::collections::HashMap::new()),
-                pending_agent_sessions: Mutex::new(std::collections::HashMap::new()),
-                pending_one_shots: Mutex::new(std::collections::HashMap::new()),
+                pending_permissions: Mutex::new(std::collections::HashMap::new()),
                 authorized_roots: state::AuthorizedRoots::default(),
             });
 
-            // 拉起 agent-sidecar；失败存入状态供前端查询，不阻断 app 启动。
-            match agent::spawn(app.handle()) {
-                Ok(handle) => {
-                    *app.state::<AppState>().agent.lock().unwrap() = Some(handle);
-                }
-                Err(error) => {
-                    eprintln!("agent sidecar spawn failed: {error}");
-                    *app.state::<AppState>().agent_spawn_error.lock().unwrap() =
-                        Some(format!("助手启动失败: {error}"));
-                }
-            }
+            let _ = app.emit("agent://event", agent::AgentEvent::Ready);
 
             #[cfg(target_os = "macos")]
             let _ = app
@@ -138,11 +160,21 @@ pub fn run() {
             // Hide instead of close the note window so it can be re-opened later.
             if let Some(note_win) = app.get_webview_window("main") {
                 let handle = app.handle().clone();
-                note_win.on_window_event(move |event| {
-                    if let WindowEvent::CloseRequested { api, .. } = event {
+                note_win.on_window_event(move |event| match event {
+                    WindowEvent::CloseRequested { api, .. } => {
                         api.prevent_close();
                         crate::windows::set_note_visible(&handle, false);
                     }
+                    // WebView2 draws the IME composition window from a caret
+                    // anchor that goes stale when the host window moves or
+                    // resizes, so let the note window re-anchor it once the
+                    // gesture settles. Windows-only: no other platform needs it.
+                    #[cfg(target_os = "windows")]
+                    WindowEvent::Moved(_) | WindowEvent::Resized(_) => {
+                        use tauri::Emitter;
+                        let _ = handle.emit_to("main", "window-geometry-changed", ());
+                    }
+                    _ => {}
                 });
             }
 
@@ -155,6 +187,17 @@ pub fn run() {
                         let _ = win.hide();
                     }
                 });
+            }
+
+            // Windows：去掉系统标题栏（左上角图标 + 系统色按钮区），
+            // min/max/close 改由前端自绘；macOS 保留 Overlay 原生红绿灯。
+            #[cfg(target_os = "windows")]
+            {
+                for label in ["main", "settings"] {
+                    if let Some(window) = app.get_webview_window(label) {
+                        window_chrome::strip_decorations(&window);
+                    }
+                }
             }
 
             tray::build_tray(app.handle())?;
@@ -177,8 +220,21 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            updates::update_check,
+            updates::update_download,
+            updates::update_prepare,
+            updates::update_install,
+            updates::update_release,
             commands::get_config,
             commands::set_config,
+            commands::get_onboarding_state,
+            commands::set_onboarding_state,
+            commands::get_runtime_profile,
+            commands::get_onboarding_preview,
+            commands::set_onboarding_preview,
+            commands::get_capture_permission_state,
+            commands::request_capture_permission,
+            commands::refresh_capture_availability,
             commands::list_notes,
             commands::save_pasted_image,
             commands::import_image_files,
@@ -229,7 +285,6 @@ pub fn run() {
             commands::get_active_note,
             commands::get_assistant_state,
             commands::toggle_assistant,
-            commands::get_agent_status,
             commands::apply_shortcuts,
             commands::set_auto_popup_mode,
             commands::get_window_shortcuts,
@@ -243,6 +298,9 @@ pub fn run() {
             popup::complete_popup_question,
             popup::translate_popup_selection,
             popup::open_ai_settings,
+            windows::take_settings_navigation,
+            commands::get_ai_readiness,
+            commands::retry_ai_configuration,
             popup::dismiss_popup,
         ])
         .run(tauri::generate_context!())

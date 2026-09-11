@@ -1,6 +1,6 @@
 import { createButton } from "../shared/ui/button";
 import { createModalPaper } from "../shared/ui/modal-paper";
-import { fillMarkdown } from "./markdown";
+import { fillMarkdown } from "../shared/markdown/render";
 import { createPermissionAllowButton, type PermissionAllowButtonHandle } from "./permission-allow-button";
 import { buildDiffRows, foldDiffRows, type DiffRow } from "./permission-diff";
 import type { PermissionPresentation, PermissionRequest, WriteMode } from "./permission-model";

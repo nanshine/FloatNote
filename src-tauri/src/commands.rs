@@ -7,12 +7,15 @@ use tauri::{Emitter, Manager, State};
 mod agent;
 #[path = "commands/chat.rs"]
 mod chat;
+#[path = "commands/onboarding.rs"]
+mod onboarding;
 #[path = "commands/settings.rs"]
 mod settings;
 #[path = "commands/versions.rs"]
 mod version_history;
 pub use agent::*;
 pub use chat::*;
+pub use onboarding::*;
 pub use settings::*;
 pub use version_history::*;
 
@@ -31,6 +34,7 @@ pub async fn set_config(
     let current = state.config.lock().unwrap().clone();
     let mut candidate = new_config;
     candidate.ai_settings = current.ai_settings;
+    candidate.onboarding = current.onboarding;
     let theme_changed = current.theme != candidate.theme;
     let theme = candidate.theme;
     crate::config::save(&state.config_path, &candidate).map_err(|error| error.to_string())?;
@@ -328,10 +332,14 @@ pub fn import_image_files(
 }
 
 pub fn config_path(app: &tauri::AppHandle) -> PathBuf {
-    app.path()
-        .app_config_dir()
-        .unwrap_or_else(|_| std::env::temp_dir().join("FloatNote"))
-        .join("config.json")
+    crate::paths::runtime_profile()
+        .map(|profile| profile.config_path.clone())
+        .unwrap_or_else(|| {
+            app.path()
+                .app_config_dir()
+                .unwrap_or_else(|_| std::env::temp_dir().join("FloatNote"))
+                .join("config.json")
+        })
 }
 
 #[cfg(test)]

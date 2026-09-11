@@ -45,6 +45,146 @@ async function mountWithDeps(overrides: Partial<AssistantDeps> = {}) {
 describe("assistant message actions", () => {
   afterEach(() => document.body.replaceChildren());
 
+  it("waits for the reveal to finish before focusing and cancels focus when closed", async () => {
+    const { root, handle } = await mountWithDeps();
+    await vi.waitFor(() => expect(root.querySelector(".editor")).not.toBeNull());
+    const wrap = root.querySelector<HTMLElement>(".assistant-input-wrap")!;
+    const content = root.querySelector<HTMLElement>(".editor")!;
+    handle.setInputOpen(false);
+    let finish!: () => void;
+    const getAnimations = vi.fn(() => [{ finished: new Promise<void>((resolve) => { finish = resolve; }) }]);
+    Object.defineProperty(wrap, "getAnimations", { value: getAnimations });
+    handle.setInputOpen(true);
+    await vi.waitFor(() => expect(getAnimations).toHaveBeenCalledOnce());
+    expect(document.activeElement).not.toBe(content);
+    finish();
+    await vi.waitFor(() => expect(document.activeElement).toBe(content));
+    handle.setInputOpen(false);
+    handle.setInputOpen(true);
+    await vi.waitFor(() => expect(getAnimations).toHaveBeenCalledTimes(2));
+    handle.setInputOpen(false);
+    finish();
+    await Promise.resolve();
+    expect(document.activeElement).not.toBe(content);
+    handle.destroy();
+  });
+
+  it("restores temporarily hidden suggestions when starting a new conversation", async () => {
+    const { root, handle } = await mountWithDeps();
+    handle.setScope({ scopeType: "project", scopePath: "/notes", scopeLabel: "Notes", cwd: "/notes" });
+    root.querySelector<HTMLButtonElement>(".assistant-suggestions-close")!.click();
+    document.querySelector<HTMLButtonElement>('[role="menuitem"]')!.click();
+    await vi.waitFor(() => expect(root.querySelector<HTMLElement>(".assistant-suggestions")!.hidden).toBe(true));
+    await handle.refreshReadiness();
+    expect(root.querySelector<HTMLElement>(".assistant-suggestions")!.hidden).toBe(true);
+    handle.startNewConversation();
+    await vi.waitFor(() => expect(root.querySelector<HTMLElement>(".assistant-suggestions")!.hidden).toBe(false));
+    handle.destroy();
+  });
+
+  it("shows provider setup in an unconfigured empty conversation", async () => {
+    const { root } = await mountWithDeps({ getReadiness: async () => ({ status: "unconfigured" }) });
+    await vi.waitFor(() => expect(root.querySelector(".assistant-empty")?.textContent).toContain("配置 AI 服务"));
+    expect(root.querySelector(".assistant-scroll")?.contains(root.querySelector(".assistant-empty"))).toBe(true);
+  });
+
+  it("restores dismissed setup on send, preserves the draft, then sends only after activation", async () => {
+    let status: "ready" | "disabled" = "ready";
+    const { root, deps, handle } = await mountWithDeps({ getReadiness: async () => ({ status }) });
+    handle.setScope({ scopeType: "project", scopePath: "/notes", scopeLabel: "Notes", cwd: "/notes" });
+    await vi.waitFor(() => expect(root.querySelector(".assistant-starters")).not.toBeNull());
+    [...root.querySelectorAll<HTMLButtonElement>(".assistant-starters button")]
+      .find((button) => button.textContent === "通过追问理清思路")!.click();
+    await vi.waitFor(() => expect(root.querySelector(".fn-assistant-structured-editor")?.textContent).toContain("请先不要给结论"));
+    status = "disabled";
+    await handle.refreshReadiness();
+    expect(root.querySelector(".assistant-setup")?.textContent).toContain("前往启用");
+    root.querySelector<HTMLButtonElement>(".assistant-new")!.click();
+    expect(root.querySelector(".assistant-setup")).toBeNull();
+    root.querySelector<HTMLButtonElement>(".assistant-send")!.click();
+    await vi.waitFor(() => expect(root.querySelector(".assistant-setup")?.textContent).toContain("内容已保留"));
+    expect(deps.createConversation).not.toHaveBeenCalled();
+    expect(deps.send).not.toHaveBeenCalled();
+    expect(root.querySelector(".chat-block-error")).toBeNull();
+    expect(root.querySelector(".fn-assistant-structured-editor")?.textContent).toContain("请先不要给结论");
+    status = "ready";
+    await handle.refreshReadiness();
+    expect(root.querySelector(".assistant-setup")).toBeNull();
+    expect(deps.send).not.toHaveBeenCalled();
+    root.querySelector<HTMLButtonElement>(".assistant-send")!.click();
+    await vi.waitFor(() => expect(deps.send).toHaveBeenCalledTimes(1));
+    handle.destroy();
+  });
+
+  for (const configurationRace of [false, true]) {
+    it(configurationRace ? "rolls back a session if the service is disabled during submission" : "keeps network failures as request errors", async () => {
+      let status: "ready" | "disabled" = "ready";
+      const send = vi.fn(async () => {
+        if (configurationRace) status = "disabled";
+        throw new Error(configurationRace ? "尚未启用 AI 提供商" : "网络超时");
+      });
+      const { root, deps, handle } = await mountWithDeps({ getReadiness: async () => ({ status }), send });
+      handle.setScope({ scopeType: "project", scopePath: "/notes", scopeLabel: "Notes", cwd: "/notes" });
+      await vi.waitFor(() => expect(root.querySelector(".assistant-starters")).not.toBeNull());
+      [...root.querySelectorAll<HTMLButtonElement>(".assistant-starters button")]
+        .find((button) => button.textContent === "通过追问理清思路")!.click();
+      await vi.waitFor(() => expect(root.querySelector(".fn-assistant-structured-editor")?.textContent).toContain("请先不要给结论"));
+      root.querySelector<HTMLButtonElement>(".assistant-send")!.click();
+      if (configurationRace) {
+        await vi.waitFor(() => expect(deps.rollbackConversation).toHaveBeenCalledWith(conversation));
+        expect(root.querySelector(".chat-user-message-text")).toBeNull();
+        expect(root.querySelector(".chat-block-error")).toBeNull();
+        expect(root.querySelector(".assistant-setup")?.textContent).toContain("前往启用");
+      } else {
+        await vi.waitFor(() => expect(root.querySelector(".chat-block-error")?.textContent).toContain("网络超时"));
+        expect(root.querySelector(".assistant-setup")).toBeNull();
+      }
+      expect(root.querySelector(".fn-assistant-structured-editor")?.textContent).toContain("请先不要给结论");
+      handle.destroy();
+    });
+  }
+
+  it("keeps history visible when disabled and starts a draft without creating a session", async () => {
+    const { root, handle, deps, emitAgent } = await mountWithDeps({ getReadiness: async () => ({ status: "disabled" }) });
+    handle.setScope({ scopeType: "project", scopePath: "/notes", scopeLabel: "Notes", cwd: "/notes" });
+    await handle.openConversation(conversation);
+    emitAgent({ type: "session_opened", conversationId: "c1", sessionFile: conversation.sessionFile, messages: [{ role: "user", text: "历史内容", timestamp: 0 }] });
+    await handle.refreshReadiness();
+    expect(root.querySelector(".chat-user-message-text")?.textContent).toContain("历史内容");
+    root.querySelector<HTMLButtonElement>(".assistant-setup-close")!.click();
+    expect(root.querySelector(".chat-user-message-text")?.textContent).toContain("历史内容");
+    root.querySelector<HTMLButtonElement>(".assistant-new")!.click();
+    await vi.waitFor(() => expect(root.querySelector(".assistant-setup")?.textContent).toContain("前往启用"));
+    expect(deps.createConversation).not.toHaveBeenCalled();
+    expect(root.querySelector(".chat-block-error")).toBeNull();
+    handle.destroy();
+  });
+
+  it("routes configuration actions and retries local runtime initialization", async () => {
+    let status: "runtime_unavailable" | "ready" = "runtime_unavailable";
+    const openSettings = vi.fn().mockResolvedValue(undefined);
+    const retryConfiguration = vi.fn(async () => { status = "ready"; return { status }; });
+    const { root, handle } = await mountWithDeps({ getReadiness: async () => ({ status }), openSettings, retryConfiguration });
+    await handle.refreshReadiness();
+    [...root.querySelectorAll<HTMLButtonElement>(".assistant-setup button")].find((button) => button.textContent === "检查设置")!.click();
+    expect(openSettings).toHaveBeenCalledOnce();
+    [...root.querySelectorAll<HTMLButtonElement>(".assistant-setup button")].find((button) => button.textContent === "重试")!.click();
+    await vi.waitFor(() => expect(root.querySelector(".assistant-setup")).toBeNull());
+    expect(retryConfiguration).toHaveBeenCalledOnce();
+    handle.destroy();
+  });
+
+  it("fills but does not send a Socratic starter in a configured empty conversation", async () => {
+    const send = vi.fn().mockResolvedValue("r2");
+    const { root } = await mountWithDeps({ getReadiness: async () => ({ status: "ready" }), send });
+    await vi.waitFor(() => expect(root.querySelector(".assistant-starters")?.textContent).toContain("通过追问理清思路"));
+    [...root.querySelectorAll<HTMLButtonElement>(".assistant-starters button")]
+      .find((button) => button.textContent === "通过追问理清思路")!.click();
+    await vi.waitFor(() => expect(root.querySelector(".fn-assistant-structured-editor")?.textContent).toContain("请先不要给结论"));
+    expect(send).not.toHaveBeenCalled();
+    await vi.waitFor(() => expect(root.querySelector(".assistant-empty")).toBeNull());
+  });
+
   it("starts a fresh prompted conversation and exposes the accepted request id", async () => {
     const send = vi.fn().mockResolvedValue("selection-r1");
     const createConversation = vi.fn().mockResolvedValue({ ...conversation, id: "selection-c1" });
