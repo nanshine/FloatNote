@@ -19,6 +19,7 @@ mod source;
 mod state;
 mod trash;
 mod tray;
+mod updates;
 mod versions;
 mod watcher;
 #[cfg(target_os = "windows")]
@@ -37,6 +38,8 @@ pub fn run() {
     #[allow(unused_mut)]
     let mut builder = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .manage(updates::UpdateState::default())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
@@ -217,6 +220,11 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            updates::update_check,
+            updates::update_download,
+            updates::update_prepare,
+            updates::update_install,
+            updates::update_release,
             commands::get_config,
             commands::set_config,
             commands::get_onboarding_state,

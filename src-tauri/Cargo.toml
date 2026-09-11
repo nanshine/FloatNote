@@ -25,6 +25,8 @@ tauri = { version = "2", features = ["macos-private-api", "tray-icon", "image-pn
 notify = "7"
 tauri-plugin-autostart = "2"
 tauri-plugin-dialog = "2"
+# Reuse the application reqwest/rustls provider instead of adding a second one.
+tauri-plugin-updater = { version = "2", default-features = false, features = ["zip", "system-proxy"] }
 tauri-plugin-global-shortcut = "2"
 # WebdriverIO 原生诊断仅由 e2e-wdio feature 启用。
 tauri-plugin-wdio = { version = "1", optional = true }

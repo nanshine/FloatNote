@@ -1,6 +1,6 @@
 # 发布流程
 
-FloatNote 的 macOS 预览版由 GitHub Actions 构建。推送版本标签后，工作流分别在原生 Apple Silicon 与 Intel runner 上构建 `.dmg`，使用 Developer ID Application 签名并提交 Apple 公证。新标签会创建 Draft、Prerelease GitHub Release，Draft 经人工检查后才会公开；手动重跑已有的 Prerelease 时会直接更新该 Release 的产物。
+FloatNote 的 macOS 和 Windows x86_64 预览版由 GitHub Actions 构建。推送版本标签后，工作流分别在原生 Apple Silicon 与 Intel runner 上构建 `.dmg`，使用 Developer ID Application 签名并提交 Apple 公证。新标签会创建 Draft、Prerelease GitHub Release，Draft 经人工检查后才会公开；只允许重跑尚未公开的 Draft，已公开版本必须通过新版本号修复。
 
 ## 日常验证
 
@@ -65,12 +65,12 @@ git push origin v0.2.0
 
 ## 审核或更新 Prerelease
 
-`prepare_release` job 会先验证标签。没有对应 Release 时，它会创建 Draft Prerelease；已有 Release 时，只要仍带有 Prerelease 标记，就会复用该 Release。随后把 Release ID 交给两个构建任务，避免并行构建竞相创建 Release。两个构建任务分别上传：
+`prepare_release` job 会先验证标签。没有对应 Release 时，它会创建 Draft Prerelease；已有 Release 时，只有仍为 Draft Prerelease 才会复用该 Release。随后把 Release ID 交给构建任务，避免并行构建竞相创建 Release。macOS 两个架构任务分别上传：
 
 - `aarch64`：Apple Silicon 的 `.dmg` 和 `.app.tar.gz`；
 - `x86_64`：Intel Mac 的 `.dmg` 和 `.app.tar.gz`。
 
-普通用户应下载 `.dmg`；工作流还会在验证后生成 `.app.tar.gz` 应用归档，供调试或自动化场景使用。
+macOS 用户首次安装下载 `.dmg`；`.app.tar.gz` 是应用内更新包，完成签名、公证、staple 和归档后使用 Tauri signer 生成 `.sig`。Windows x86_64 构建生成 NSIS `-setup.exe` 和对应 `.sig`，同一 EXE 用于首次安装和更新。Updater 签名不等于 Windows Authenticode 签名；当前 Windows 工作流尚未配置代码签名证书。
 
 每个构建任务会在上传前验证对应产物：
 
@@ -80,9 +80,9 @@ git push origin v0.2.0
 - `xcrun stapler validate` 检查 `.app` 和 `.dmg` 的公证票据；
 - `spctl --assess` 检查 Gatekeeper 对 `.app` 和 `.dmg` 的判断。
 
-签名、公证或验证失败时不会上传该架构的资产。缺少预期的 `.app` 或 DMG 时，工作流会输出该 target 的 bundle 目录树，便于区分构建失败、产物改名和 Tauri 清理行为。上传阶段会按资产名替换同一 Release 中的旧版本。如果目标还是 Draft，上传中途失败时不要人工发布；如果目标已经公开为 Prerelease，重跑期间可能短暂缺少部分架构或只有部分资产完成更新，应在 Actions 全部成功后再通知用户下载。
+签名、公证或验证失败时不会上传该架构的资产。缺少预期的 `.app` 或 DMG 时，工作流会输出该 target 的 bundle 目录树，便于区分构建失败、产物改名和 Tauri 清理行为。上传阶段会按资产名替换同一 Release 中的旧版本。如果目标还是 Draft，上传中途失败时不要人工发布；公开的 Release 禁止重跑替换文件，避免客户端持有旧清单却下载到新字节。
 
-新建 Release 时，GitHub 会根据模板正文加入架构选择说明并自动生成提交记录。复用已有 Prerelease 时，工作流只替换同名产物，不会更新现有正文；两个架构任务成功后，应人工校对并更新说明，同时保留已有的自动生成 changelog。公开前应人工补充或整理以下内容：
+新建 Release 时，GitHub 会根据模板正文加入架构选择说明并自动生成提交记录。复用已有 Prerelease 时，工作流只替换同名产物，不会更新现有正文；三平台构建任务成功后，应人工校对并更新说明，同时保留已有的自动生成 changelog。公开前应人工补充或整理以下内容：
 
 ```markdown
 ## 新功能
@@ -92,7 +92,7 @@ git push origin v0.2.0
 - ...
 
 ## 已知问题
-- Windows 安装包仍在准备中。
+- 按实际测试结果填写。
 ```
 
 至少下载并验证当前机器对应的 `.dmg`：
@@ -103,7 +103,7 @@ git push origin v0.2.0
 4. 确认写入权限气泡和应用写入；
 5. 重启后确认聊天恢复。
 
-确认 Release 标题、说明、两种架构的 `.dmg`/应用归档、签名公证检查和功能测试结果后，再在 GitHub 将新 Draft 发布。更新已发布的 Prerelease 时不需要再次发布，但必须等两个架构任务都成功。预览阶段应保留 Prerelease 标记。
+确认 Release 标题、说明、两种架构的 `.dmg`/应用归档、Windows 安装包、更新签名及公证检查和功能测试结果后，再在 GitHub 将新 Draft 发布。已发布的 Prerelease 如需修改程序，必须提升版本号并创建新标签。预览阶段应保留 Prerelease 标记。
 
 还可以对下载后的 DMG 再做一次独立验证：
 
@@ -150,3 +150,55 @@ Tauri 的 `beforeBuildCommand` 只构建前端；Rig Agent 静态链接进 Rust 
 `src-tauri/tauri.conf.json` 保留 `signingIdentity: "-"`，因此没有发布 secrets 的本地构建仍使用 ad-hoc 签名。CI 导入 Developer ID 证书后设置的 `APPLE_SIGNING_IDENTITY` 会覆盖该值，并触发正式签名与公证。
 
 应用不再申请 JIT 或 unsigned executable memory entitlement。修改 Rig、TLS、Agent resources 或签名配置后，应通过新的 Draft 构建重新执行 Apple 公证验证。
+
+## 应用内更新与一次性密钥配置
+
+应用由主窗口统一协调更新：启动 10 秒后检查一次，以后每 4 小时检查，设置 → 通用 → 应用更新可手动检查和安装。后台检查失败保持安静，下载必须经用户确认。Rust 持有更新包并通过官方 Updater 验签，下载后检查 Agent 是否空闲，阻止新的 Agent 请求，前端暂停编辑并等待保存；未保存内容、写盘错误或冲突未解决时拒绝安装并解除锁。Windows 安装器会退出应用，macOS 安装后显式重启。更新不主动删除笔记、配置或聊天历史，但未来数据格式迁移仍须单独设计兼容与备份。
+
+尚无更新器的旧安装需要手动安装一次带更新器的版本。无公钥的本地构建显示“此构建尚未启用在线更新”，不访问更新服务。
+
+先在本机生成长期使用的更新密钥，私钥不要放进仓库。以下命令会交互式询问密码；请在密码管理器中备份私钥和密码：
+
+```bash
+mkdir -p "$HOME/.tauri"
+npm run tauri signer generate -- -w "$HOME/.tauri/floatnote-updater.key"
+```
+
+在 GitHub 仓库 Settings → Secrets and variables → Actions 中配置：
+
+| 类型 | 名称 | 值 |
+| --- | --- | --- |
+| Variable | `FLOATNOTE_UPDATER_PUBLIC_KEY` | `.key.pub` 文件的完整内容，不是路径，也不需要再次 Base64 编码 |
+| Secret | `TAURI_SIGNING_PRIVATE_KEY` | `.key` 文件的完整内容 |
+| Secret | `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | 生成私钥时设置的密码 |
+
+也可用已登录的 GitHub CLI，通过标准输入上传文件，不把私钥写入命令参数：
+
+```bash
+gh variable set FLOATNOTE_UPDATER_PUBLIC_KEY < "$HOME/.tauri/floatnote-updater.key.pub"
+gh secret set TAURI_SIGNING_PRIVATE_KEY < "$HOME/.tauri/floatnote-updater.key"
+gh secret set TAURI_SIGNING_PRIVATE_KEY_PASSWORD
+```
+
+发布 job 将公钥通过 `FLOATNOTE_UPDATER_PUBLIC_KEY` 编译进应用；没有公钥时发布预检失败。本项目对最终归档手动执行 `tauri signer sign`，因此未开启 `createUpdaterArtifacts`，以免 macOS 公证后重建归档导致自动生成的签名失效。私钥仅出现在签名步骤。发布清单脚本验证签名内的 key ID 与公钥一致，完整密码学验签由客户端插件执行。
+
+不要每次发版生成新密钥。老版本只信任编译时的公钥，轮换需要旧密钥签署过渡版本；丢失私钥会破坏已有客户端的升级路径。
+
+## 发布更新清单
+
+1. 推送新版本标签，等待 macOS 双架构和 Windows x86_64 构建全部通过，检查 Draft 中三平台包及 `.sig`。
+2. 完成安装与功能验收后，人工公开 Draft Prerelease。
+3. `publish-update.yml` 的 `release: published` 事件下载签名，检查三平台包可公开访问、签名 key ID 匹配，然后以一次 Git 提交更新 `updates` 分支的 `preview.json`。正式 Release 写入 `stable.json`；当前应用订阅预览通道，正式通道客户端发布前需要将配置 endpoint 切换为 `stable.json`。
+4. 客户端固定读取 `https://raw.githubusercontent.com/nanshine/FloatNote/updates/preview.json`。仓库及 Release 资产必须可公开访问，不向应用嵌入 GitHub token；如未来使用私有仓库，应迁移至公开对象存储/CDN。
+
+清单发布失败时已有清单保持不变；修复后可手动运行 Publish update feed 并输入已经公开的标签。不要手工先改清单再上传包。GitHub 访问和缓存可能造成检查延迟，后续可迁移到自有域名/CDN。首次运行会创建 `updates` 分支；仓库规则需要允许工作流账号写入该分支。
+
+## 更新验收
+
+自动化测试覆盖单实例协调、网络/验签失败、保存失败阻止安装、Agent 忙碌保护、更新说明按纯文本显示，以及真实 Tauri signer 的清单格式。发布前仍须用真实包完成下列验收（开发模式不能替代安装测试）：
+
+- 用相同公钥构建旧版 A、新版 B；在 Apple Silicon、Intel Mac 和 Windows x86_64 上从已安装 A 升级到 B。
+- 检查手动/后台检查、稍后取消、下载进度、断网重试、签名错误阻止安装。
+- 带未保存笔记更新，确认重启后内容、配置和聊天历史保留；模拟写入失败确认不会退出。
+- Agent 运行中更新应提示等待或停止；停止并落盘后重试成功。
+- Windows 检查 NSIS 退出/重启行为及安装目录权限，macOS 在 `/Applications` 中验证签名、公证和更新后首次启动。

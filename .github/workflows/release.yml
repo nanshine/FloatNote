@@ -19,6 +19,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
+  FLOATNOTE_UPDATER_PUBLIC_KEY: ${{ vars.FLOATNOTE_UPDATER_PUBLIC_KEY }}
   RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
 
 jobs:
@@ -38,6 +39,8 @@ jobs:
           node-version: 22.19.0
           cache: npm
       - run: npm ci
+      - name: Validate updater public key
+        run: node scripts/update-release.mjs validate-key
       - name: Verify release tag and commit
         run: |
           set -euo pipefail
@@ -61,6 +64,10 @@ jobs:
             --jq ".[] | select(.tag_name == \"$RELEASE_TAG\") | [.id, .draft, .prerelease] | @tsv")
           if [ -n "$release_info" ]; then
             IFS=$'\t' read -r release_id is_draft is_prerelease <<< "$release_info"
+            if [ "$is_draft" = "false" ]; then
+              echo "Published releases are immutable; publish a new version instead." >&2
+              exit 1
+            fi
             if [ "$is_prerelease" != "true" ]; then
               echo "Existing release $RELEASE_TAG must remain a prerelease" >&2
               exit 1
@@ -260,6 +267,12 @@ jobs:
           echo "DMG_ASSET_PATH=$dmg_asset_path" >> "$GITHUB_ENV"
           echo "APP_ARCHIVE_PATH=$app_archive_path" >> "$GITHUB_ENV"
 
+      - name: Sign final updater archive
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: npm run tauri signer sign -- "$APP_ARCHIVE_PATH"
+
       - name: Upload verified release assets
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -267,12 +280,13 @@ jobs:
         run: |
           set -euo pipefail
 
+          test "$(gh api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" --jq '.draft')" = true
           upload_url="$(
             gh api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" --jq '.upload_url'
           )"
           upload_base="$(printf '%s\n' "$upload_url" | sed 's/{.*$//')"
 
-          for asset_path in "$DMG_ASSET_PATH" "$APP_ARCHIVE_PATH"; do
+          for asset_path in "$DMG_ASSET_PATH" "$APP_ARCHIVE_PATH" "$APP_ARCHIVE_PATH.sig"; do
             asset_name="$(basename "$asset_path")"
             encoded_asset_name="$(node -e \
               'process.stdout.write(encodeURIComponent(process.argv[1]))' \
@@ -290,6 +304,7 @@ jobs:
             case "$asset_path" in
               *.dmg) content_type="application/x-apple-diskimage" ;;
               *.tar.gz) content_type="application/gzip" ;;
+              *.sig) content_type="text/plain" ;;
               *)
                 echo "Unsupported release asset: $asset_path" >&2
                 exit 1
@@ -324,3 +339,43 @@ jobs:
             fi
             echo "Uploaded $asset_name to prerelease $RELEASE_TAG."
           done
+
+  build-windows:
+    name: Windows x86_64
+    needs: prepare_release
+    runs-on: windows-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.19.0
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+      - run: npm ci
+      - run: npm run version:check -- --tag "$RELEASE_TAG"
+      - run: npm run tauri build -- --bundles nsis
+      - name: Sign and upload Windows installer
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_ID: ${{ needs.prepare_release.outputs.release_id }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          installers=(src-tauri/target/release/bundle/nsis/*.exe)
+          test "${#installers[@]}" -eq 1
+          version="$(node -p 'JSON.parse(require("fs").readFileSync("package.json", "utf8")).version')"
+          asset="$RUNNER_TEMP/FloatNote_${version}_x86_64-setup.exe"
+          cp "${installers[0]}" "$asset"
+          npm run tauri signer sign -- "$asset"
+          test "$(gh api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" --jq '.draft')" = true
+          gh release upload "$RELEASE_TAG" "$asset" "$asset.sig" --clobber

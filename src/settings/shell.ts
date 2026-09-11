@@ -13,6 +13,7 @@ export function settingsShellMarkup(): string {
         <div class="settings-pane" data-pane="general">
           <header class="settings-page-heading"><span>FloatNote</span><h1>通用设置</h1><p>调整 FloatNote 的外观与启动行为。</p></header>
           <section class="settings-section" aria-labelledby="general-title"><h2 id="general-title">通用</h2><div id="general-settings"></div></section>
+          <section class="settings-section" aria-label="应用更新"><div id="update-settings"></div></section>
           <section class="settings-section" aria-label="新手引导"><div id="onboarding-settings"></div></section>
         </div>
         <div class="settings-pane" data-pane="ai" hidden>

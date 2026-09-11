@@ -1,3 +1,4 @@
+import { mountUpdates } from "./updates";
 import "@phosphor-icons/web/regular";
 import { invoke } from "@tauri-apps/api/core";
 import { initializeAppearance } from "../shared/appearance";
@@ -19,6 +20,7 @@ import { getRuntimeProfile } from "../platform/onboarding";
 import { mountOnboardingSettings } from "./onboarding-lab";
 
 const app = document.querySelector<HTMLElement>("#app")!;
+let disconnectUpdates: (() => void) | null = null;
 let disconnectPermission: (() => void) | null = null;
 let disconnectNavigation: (() => void) | null = null;
 
@@ -40,6 +42,8 @@ async function render(): Promise<void> {
     mountResizeEdges();
     const save = () => invoke<void>("set_config", { newConfig: config });
     mountGeneralSettings(app.querySelector<HTMLElement>("#general-settings")!, config, save);
+    disconnectUpdates?.();
+    disconnectUpdates = await mountUpdates(app.querySelector<HTMLElement>("#update-settings")!);
     const runtime = await getRuntimeProfile();
     mountOnboardingSettings(app.querySelector<HTMLElement>("#onboarding-settings")!, runtime.isDebug);
     mountProviderSettings(app.querySelector<HTMLElement>("#provider-settings")!, config.ai_settings, {

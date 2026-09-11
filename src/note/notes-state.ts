@@ -318,6 +318,14 @@ export async function settleAllPendingWrites(): Promise<void> {
   await Promise.all([...paths].map((path) => settlePendingWrites(path)));
 }
 
+/** Update installation must never proceed after a failed or unsettled save. */
+export async function saveBeforeUpdate(): Promise<void> {
+  await settleAllPendingWrites();
+  if (pending.size || inFlight.size || conflictResolutions.size) {
+    throw new Error("仍有笔记未保存，请处理保存错误或文件冲突后重试更新。");
+  }
+}
+
 function runFlush(path: string, force = false): Promise<void> {
   const previous = inFlight.get(path) ?? Promise.resolve();
   const operation = previous.catch(() => {}).then(async () => {

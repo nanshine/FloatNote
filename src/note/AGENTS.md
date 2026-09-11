@@ -7,6 +7,7 @@ load/save/interoperability boundary, while ProseMirror state is authoritative du
 
 ## Module map
 
+- `updates.ts` — 唯一更新协调器，后台检查和安装前保存屏障。
 - `notes-state.ts` — Tauri call wrappers (read/list/create/rename/delete) +
   per-path debounced save queue (`scheduleSave`/`saveImmediate`/`flushAll`)
   with mtime conflict guard. `loadNote` registers last-known mtime.

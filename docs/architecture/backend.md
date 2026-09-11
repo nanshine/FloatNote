@@ -90,3 +90,7 @@ managed state，设置前端在监听就绪后调用 `take_settings_navigation` 
 均不依赖窗口加载时序或延时。
 
 macOS 划线权限使用 `refresh_capture_availability` 返回 `{ permission, monitor }`，将系统信任状态与监听运行状态区分。刷新与工具栏模式变更串行化：未授权时停止监听，授权后按用户模式恢复监听；不会重放先前采集。启动安装只做静默检查，主动采集未授权时显示主窗口并发送 `accessibility-needed`。`request_capture_permission` 仅由用户点击调用，请求系统提示并打开隐私与安全性下的辅助功能页，打开失败返回手动路径。监听初始化失败发送 `selection-monitor-failed`，不冒充权限拒绝。Windows 无此授权要求。
+
+### 应用更新
+
+`updates.rs` 使用 `tauri-plugin-updater` 实现 `update_check`、`update_download`（IPC Channel 进度）、`update_prepare`、`update_install`、`update_release`。这些命令验证调用窗口为 `main`，更新包和安装状态保存在独立的 `UpdateState` 中，不开放插件的直接前端安装权限。公钥从发布环境编译注入，空公钥禁用检查；网络只通过 HTTPS 更新端点。Agent 的更新锁与新请求登记串行化，活动任务存在时拒绝安装准备。

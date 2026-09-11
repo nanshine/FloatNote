@@ -18,6 +18,7 @@ entry that calls `floatnote::run()`.
   Model-visible creation is `create_piece`/`create`; `write` may only review a
   rewrite of an existing note.
   The Agent runs inside the Tauri process; Node is not shipped in app bundles.
+- `updates.rs` — 主窗口专用更新命令、验签下载和安装状态，发布公钥通过编译环境注入。
 - `notes.rs` — note file read/write, `rename_note`/`delete_note`/`create_note`
   (atomic write, mtime), image path safety, project-space listing.
 - `project.rs` — project-space discovery, pieces, `sanitize_folder_name`.

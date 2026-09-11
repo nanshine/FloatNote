@@ -36,6 +36,7 @@ pub struct AgentService {
     active_runs: Mutex<HashMap<String, ActiveRun>>,
     skills: Mutex<SkillSnapshot>,
     title_started: Mutex<HashSet<String>>,
+    update_gate: Mutex<bool>,
 }
 
 struct ActiveRun {
@@ -56,6 +57,19 @@ struct PromptRun<'a> {
 }
 
 impl AgentService {
+    pub fn prepare_update(&self) -> Result<(), String> {
+        let mut gate = self.update_gate.lock().unwrap();
+        if !self.active_runs.lock().unwrap().is_empty() {
+            return Err("助手仍在运行，请等待回复结束或停止任务后重试更新。".into());
+        }
+        *gate = true;
+        Ok(())
+    }
+
+    pub fn release_update(&self) {
+        *self.update_gate.lock().unwrap() = false;
+    }
+
     pub fn new() -> Self {
         Self::default()
     }
@@ -183,6 +197,10 @@ impl AgentService {
         references: Option<Vec<PromptRef>>,
         skill: Option<PromptSkill>,
     ) -> Result<(), String> {
+        let update_gate = self.update_gate.lock().unwrap();
+        if *update_gate {
+            return Err("正在安装更新，请稍候。".into());
+        }
         let model = self
             .model
             .lock()
@@ -221,6 +239,7 @@ impl AgentService {
                 abort: abort_handle,
             },
         );
+        drop(update_gate);
         let service = self.clone();
         let partial = std::sync::Arc::new(Mutex::new(PartialOutput::default()));
         let run_partial = partial.clone();
@@ -747,5 +766,29 @@ pub fn translate_system_prompt(input: &str) -> &'static str {
         "将用户文本准确、自然地翻译成英文。只返回译文。"
     } else {
         "将用户文本准确、自然地翻译成中文。只返回译文。"
+    }
+}
+
+#[cfg(test)]
+mod update_tests {
+    use super::*;
+    #[test]
+    fn update_gate_rejects_active_runs_and_releases_after_failure() {
+        let service = AgentService::new();
+        let (abort, _) = AbortHandle::new_pair();
+        service.active_runs.lock().unwrap().insert(
+            "r1".into(),
+            ActiveRun {
+                conversation_id: "chat1".into(),
+                abort,
+            },
+        );
+        assert!(service.prepare_update().is_err());
+        assert!(!*service.update_gate.lock().unwrap());
+        service.active_runs.lock().unwrap().clear();
+        assert!(service.prepare_update().is_ok());
+        assert!(*service.update_gate.lock().unwrap());
+        service.release_update();
+        assert!(!*service.update_gate.lock().unwrap());
     }
 }

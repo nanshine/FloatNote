@@ -1,3 +1,4 @@
+import { startUpdates, isPreparingUpdate } from "./updates";
 import { captureQuote, type QuotePayload } from "./capture";
 import "@phosphor-icons/web/regular";
 import "../assistant/styles.css";
@@ -1501,6 +1502,7 @@ async function init() {
 
   await loadShortcuts();
   await listen<QuotePayload>("quote-captured", ({ payload }) => {
+    if (isPreparingUpdate()) { showToast("正在安装更新，请重启后重新采集"); return; }
     if (captureTargetLoading) {
       showToast("文档正在加载，请稍后重新采集");
       return;
@@ -1549,7 +1551,7 @@ async function init() {
 
 }
 
-void init();
+void init().then(() => startUpdates()).catch(console.error);
 
 attachAutomationToasts();
 
