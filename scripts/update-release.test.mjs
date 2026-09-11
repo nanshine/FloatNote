@@ -4,7 +4,7 @@ import { mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
-import { createManifest, validateKey, compareVersions } from "./update-release.mjs";
+import { createManifest, validateKey, compareVersions, selectChannelUpdates } from "./update-release.mjs";
 
 // Exercise the real Tauri signer format without retaining any test private key.
 test("manifest accepts actual Tauri signatures and rejects incomplete or mismatched releases", async () => {
@@ -44,4 +44,31 @@ test("channel ordering prevents downgrades and compares prerelease numbers seman
   assert.ok(compareVersions("1.0.0", "1.0.0-beta.10") > 0);
   assert.ok(compareVersions("0.9.0", "1.0.0") < 0);
   assert.equal(compareVersions("1.0.0", "1.0.0"), 0);
+});
+
+test("stable releases advance stable and migrate older preview clients", () => {
+  const manifest = { version: "0.2.1" };
+  assert.deepEqual(selectChannelUpdates(
+    { prerelease: false },
+    manifest,
+    { preview: { version: "0.2.0" } },
+  ), ["stable", "preview"]);
+  assert.deepEqual(selectChannelUpdates(
+    { prerelease: false },
+    manifest,
+    { preview: { version: "0.3.0-beta.1" } },
+  ), ["stable"]);
+});
+
+test("every required channel remains monotonic", () => {
+  assert.throws(() => selectChannelUpdates(
+    { prerelease: true },
+    { version: "0.2.1" },
+    { preview: { version: "0.2.1" } },
+  ), /equal or newer/);
+  assert.throws(() => selectChannelUpdates(
+    { prerelease: false },
+    { version: "0.2.1" },
+    { stable: { version: "0.2.2" } },
+  ), /equal or newer/);
 });

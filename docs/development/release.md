@@ -1,6 +1,6 @@
 # 发布流程
 
-FloatNote 的 macOS 和 Windows x86_64 预览版由 GitHub Actions 构建。推送版本标签后，工作流分别在原生 Apple Silicon 与 Intel runner 上构建 `.dmg`，使用 Developer ID Application 签名并提交 Apple 公证。新标签会创建 Draft、Prerelease GitHub Release，Draft 经人工检查后才会公开；只允许重跑尚未公开的 Draft，已公开版本必须通过新版本号修复。
+FloatNote 的 macOS 和 Windows x86_64 安装包由 GitHub Actions 构建。推送版本标签后，工作流分别在原生 Apple Silicon 与 Intel runner 上构建 `.dmg`，使用 Developer ID Application 签名并提交 Apple 公证。新标签会先创建 Draft、Prerelease GitHub Release 供检查，公开 Draft 时再决定保留 Prerelease 标记或提升为正式 Release；只允许重跑尚未公开的 Draft，已公开版本必须通过新版本号修复。
 
 ## 日常验证
 
@@ -103,7 +103,9 @@ macOS 用户首次安装下载 `.dmg`；`.app.tar.gz` 是应用内更新包，�
 4. 确认写入权限气泡和应用写入；
 5. 重启后确认聊天恢复。
 
-确认 Release 标题、说明、两种架构的 `.dmg`/应用归档、Windows 安装包、更新签名及公证检查和功能测试结果后，再在 GitHub 将新 Draft 发布。已发布的 Prerelease 如需修改程序，必须提升版本号并创建新标签。预览阶段应保留 Prerelease 标记。
+确认 Release 标题、说明、两种架构的 `.dmg`/应用归档、Windows 安装包、更新签名及公证检查和功能测试结果后，再在 GitHub 发布 Draft。预览版本保留 Prerelease 标记；正式版本应在首次公开 Draft 时取消该标记，使 `release: published` 事件直接生成正式清单。已公开版本如需修改程序，必须提升版本号并创建新标签。
+
+若一个已公开的 Prerelease 只需要提升发布级别而不改变二进制，可以取消 Prerelease 标记，再手动运行 **Publish update feed** 并输入该标签，以补充 `stable.json`；不要重新上传或覆盖已公开资产。
 
 还可以对下载后的 DMG 再做一次独立验证：
 
@@ -187,9 +189,9 @@ gh secret set TAURI_SIGNING_PRIVATE_KEY_PASSWORD
 ## 发布更新清单
 
 1. 推送新版本标签，等待 macOS 双架构和 Windows x86_64 构建全部通过，检查 Draft 中三平台包及 `.sig`。
-2. 完成安装与功能验收后，人工公开 Draft Prerelease。
-3. `publish-update.yml` 的 `release: published` 事件下载签名，检查三平台包可公开访问、签名 key ID 匹配，然后以一次 Git 提交更新 `updates` 分支的 `preview.json`。正式 Release 写入 `stable.json`；当前应用订阅预览通道，正式通道客户端发布前需要将配置 endpoint 切换为 `stable.json`。
-4. 客户端固定读取 `https://raw.githubusercontent.com/nanshine/FloatNote/updates/preview.json`。仓库及 Release 资产必须可公开访问，不向应用嵌入 GitHub token；如未来使用私有仓库，应迁移至公开对象存储/CDN。
+2. 完成安装与功能验收后，按发布目标将 Draft 公开为 Prerelease 或正式 Release。
+3. `publish-update.yml` 的 `release: published` 事件下载签名，检查三平台包可公开访问、签名 key ID 匹配，然后以一次 Git 提交更新 `updates` 分支的更新清单。Prerelease 写入 `preview.json`；正式 Release 写入 `stable.json`，并在版本更新时同步推进 `preview.json`，让已有预览客户端能够迁移到正式版本，但不会用较旧的正式版覆盖更新的预览版。
+4. 正式客户端固定读取 `https://raw.githubusercontent.com/nanshine/FloatNote/updates/stable.json`。仓库及 Release 资产必须可公开访问，不向应用嵌入 GitHub token；如未来使用私有仓库，应迁移至公开对象存储/CDN。
 
 清单发布失败时已有清单保持不变；修复后可手动运行 Publish update feed 并输入已经公开的标签。不要手工先改清单再上传包。GitHub 访问和缓存可能造成检查延迟，后续可迁移到自有域名/CDN。首次运行会创建 `updates` 分支；仓库规则需要允许工作流账号写入该分支。
 

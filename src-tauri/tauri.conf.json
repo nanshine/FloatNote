@@ -87,7 +87,7 @@
     "updater": {
       "pubkey": "",
       "endpoints": [
-        "https://raw.githubusercontent.com/nanshine/FloatNote/updates/preview.json"
+        "https://raw.githubusercontent.com/nanshine/FloatNote/updates/stable.json"
       ]
     }
   }
