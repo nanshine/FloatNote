@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { withAppState } from "../platform/startup";
 import { listen } from "@tauri-apps/api/event";
 import { requestCapturePermission, type CapturePermissionState } from "../platform/onboarding";
 import { showToast } from "./toast";
@@ -7,7 +8,7 @@ export interface CaptureAvailability { permission: CapturePermissionState; monit
 export function captureStatusText(state: CaptureAvailability): string {
   if (state.permission === "required") return "划线采集待授权";
   if (state.monitor === "failed") return "划线工具栏启动失败";
-  if (state.monitor === "off") return "辅助功能已授权，自动工具栏已关闭";
+  if (state.monitor === "off") return "自动划线工具栏已关闭";
   return "划线采集已就绪";
 }
 
@@ -35,11 +36,11 @@ export function mountCapturePermission(root: HTMLElement, compact = false): () =
     if (busy || disposed) return;
     busy = true;
     try {
-      const next = await invoke<CaptureAvailability>("refresh_capture_availability");
+      const next = await withAppState(() => invoke<CaptureAvailability>("refresh_capture_availability"));
       if (disposed) return;
       const recovered = previous?.permission === "required" && next.permission === "granted";
       previous = next;
-      card.hidden = next.permission === "not_required" || (compact && next.permission !== "required" && next.monitor !== "failed");
+      card.hidden = (next.permission === "not_required" && next.monitor !== "failed") || (compact && next.permission !== "required" && next.monitor !== "failed");
       status.textContent = next.permission === "required" && wasGranted ? "辅助功能权限已关闭" : captureStatusText(next);
       wasGranted ||= next.permission === "granted";
       card.querySelector<HTMLElement>("[data-purpose]")!.hidden = next.permission !== "required";
@@ -49,9 +50,14 @@ export function mountCapturePermission(root: HTMLElement, compact = false): () =
       if (recovered && compact) showToast(next.monitor === "running" ? "划线采集已就绪，重新划选一段文字试试" : captureStatusText(next));
       if (!compact) expand(true);
     } catch (reason) {
+      if (disposed) return;
       card.hidden = false;
       status.textContent = "无法检测划线采集状态";
-      error.textContent = String(reason);
+      card.querySelector<HTMLElement>("[data-purpose]")!.hidden = true;
+      card.querySelector<HTMLElement>("[data-instructions]")!.hidden = true;
+      open.hidden = true;
+      error.textContent = "请重新检测，仍失败时重启 FloatNote。可以继续写笔记和手动粘贴。";
+      console.error("Capture availability check failed", reason);
       expand(true);
     } finally { busy = false; }
   }

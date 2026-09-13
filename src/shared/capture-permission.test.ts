@@ -41,3 +41,19 @@ it("hides the macOS permission entry on Windows", async () => {
   await vi.waitFor(() => expect(invoke).toHaveBeenCalled());
   expect(document.querySelector<HTMLElement>(".capture-permission")!.hidden).toBe(true);
 });
+
+it("does not show macOS settings instructions when detection fails", async () => {
+  vi.mocked(invoke).mockRejectedValue("backend unavailable");
+  cleanup = mountCapturePermission(document.body, true);
+  await vi.waitFor(() => expect(document.querySelector("[data-status]")?.textContent).toContain("无法检测"));
+  expect(document.querySelector<HTMLElement>("[data-instructions]")!.hidden).toBe(true);
+  expect(document.querySelector<HTMLButtonElement>("[data-open]")!.hidden).toBe(true);
+  expect(document.querySelector("[data-error]")?.textContent).not.toContain("backend unavailable");
+});
+it("shows monitor failure on Windows without permission instructions", async () => {
+  vi.mocked(invoke).mockResolvedValue({ permission: "not_required", monitor: "failed" });
+  cleanup = mountCapturePermission(document.body, true);
+  await vi.waitFor(() => expect(document.querySelector("[data-status]")?.textContent).toContain("启动失败"));
+  expect(document.querySelector<HTMLElement>(".capture-permission")!.hidden).toBe(false);
+  expect(document.querySelector<HTMLButtonElement>("[data-open]")!.hidden).toBe(true);
+});

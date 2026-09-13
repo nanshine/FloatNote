@@ -1,6 +1,7 @@
 import { mountUpdates } from "./updates";
 import "@phosphor-icons/web/regular";
 import { invoke } from "@tauri-apps/api/core";
+import { withAppState } from "../platform/startup";
 import { initializeAppearance } from "../shared/appearance";
 import { createEmptyAiSettings } from "./provider-profiles";
 import { mountProviderSettings } from "./provider-settings";
@@ -27,7 +28,7 @@ let disconnectNavigation: (() => void) | null = null;
 async function render(): Promise<void> {
   initializeAppearance();
   try {
-    const config = await invoke<Config>("get_config");
+    const config = await withAppState(() => invoke<Config>("get_config"));
     config.disabled_skills ??= [];
     config.ai_settings ??= createEmptyAiSettings();
     config.assistant_output_mode = config.assistant_output_mode === "detailed" ? "detailed" : "compact";

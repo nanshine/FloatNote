@@ -1,5 +1,6 @@
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
+import { withAppState } from "../platform/startup";
 
 export type Theme = "system" | "light" | "dark";
 
@@ -20,7 +21,7 @@ export function initializeAppearance(): void {
       applyAppearance(normalizeTheme(event.payload));
     });
     try {
-      const config = await invoke<{ theme?: unknown }>("get_config");
+      const config = await withAppState(() => invoke<{ theme?: unknown }>("get_config"));
       if (!receivedThemeEvent) applyAppearance(normalizeTheme(config.theme));
     } catch {
       // Keep the safe system default if configuration is not available yet.
