@@ -1,0 +1,52 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "",
+        "width": 380,
+        "height": 520,
+        "minWidth": 360,
+        "minHeight": 360,
+        "visible": false,
+        "alwaysOnTop": true,
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true,
+        "url": "index.html",
+        "decorations": false
+      },
+      {
+        "label": "settings",
+        "title": "",
+        "width": 780,
+        "height": 620,
+        "minWidth": 720,
+        "minHeight": 520,
+        "visible": false,
+        "decorations": false,
+        "resizable": true,
+        "maximizable": true,
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true,
+        "url": "settings.html"
+      },
+      {
+        "label": "selection-popup",
+        "url": "popup.html",
+        "width": 100,
+        "height": 50,
+        "transparent": true,
+        "decorations": false,
+        "focus": false,
+        "focusable": true,
+        "acceptFirstMouse": true,
+        "alwaysOnTop": true,
+        "shadow": false,
+        "resizable": false,
+        "visible": false,
+        "skipTaskbar": true
+      }
+    ]
+  }
+}

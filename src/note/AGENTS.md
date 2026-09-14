@@ -1,7 +1,12 @@
 # src/note — note window
 
 The main note window (Milkdown/ProseMirror editor + inbox/pieces/tasks + assistant).
-Entry: `main.ts` calls async `startNoteApp()` in `note-app.ts`. Inbox and piece/document
+Entry: `main.ts` keeps the HTML startup/recovery shell visible while dynamically
+loading `boot-app.ts`, which calls async `startNoteApp()` in `note-app.ts`.
+`startup-shell.ts` owns slow/failure messaging and calls `reveal_startup_window`
+after success/failure; the native 800ms fallback reveals slow startup. Recovery
+controls appear only after 15 seconds or failure; retry reloads the whole page.
+Inbox and piece/document
 editors share `src/shared/markdown/structured-editor.ts`; Markdown is only the
 load/save/interoperability boundary, while ProseMirror state is authoritative during edits.
 

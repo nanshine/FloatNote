@@ -163,8 +163,13 @@ describe("design tokens", () => {
     }
   });
 
-  it("links index.css from every window HTML head", () => {
+  it("loads shared tokens in every window, after the main startup shell", () => {
     for (const f of windowHtml) {
+      if (f === "index.html") {
+        const boot = readFileSync(resolve(root, "src/note/boot-app.ts"), "utf8");
+        expect(boot).toContain('import "../styles/index.css"');
+        continue;
+      }
       const h = readFileSync(resolve(root, f), "utf8");
       expect(h).toMatch(/href="\/src\/styles\/index\.css"/);
     }

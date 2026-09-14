@@ -360,7 +360,8 @@ export function createOnboardingController(deps: OnboardingDeps): OnboardingCont
       } else {
         await render();
       }
-      if (active()) {
+      // Initial visibility belongs to the startup gate; replay may still focus.
+      if (active() && !document.querySelector("#startup-shell")) {
         const window = getCurrentWindow();
         await window.show();
         await window.setFocus();

@@ -3,7 +3,12 @@ import { resolve } from "path";
 
 export default defineConfig({
   clearScreen: false,
-  server: { port: 1422, strictPort: true },
+  server: {
+    port: 1422,
+    strictPort: true,
+    // Cargo owns these files; watching locked Windows binaries can stop Vite.
+    watch: { ignored: ["**/src-tauri/**"] },
+  },
   build: {
     rollupOptions: {
       input: {

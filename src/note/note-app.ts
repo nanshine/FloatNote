@@ -1566,7 +1566,7 @@ async function initialize() {
     });
   }
 }
-void initialize();
+await initialize();
 
 attachAutomationToasts();
 
