@@ -34,6 +34,10 @@ npm run ci:local
 
 Team API 私钥只会解码到 runner 的临时目录，并通过 `APPLE_API_ISSUER`、`APPLE_API_KEY` 和 `APPLE_API_KEY_PATH` 交给 Tauri。runner 结束后临时钥匙串和私钥会随环境销毁。证书或 API Key 被撤销、轮换后，必须同步更新对应 secrets；不要将 `.p12`、`.p8`、密码或 Base64 中间文件提交到仓库。
 
+## README 下载入口
+
+README 的下载链接统一使用 GitHub 的 `releases/latest` 入口，自动跟随最新正式 Release，无需在发版时修改版本号。用户在发布页的 Assets 中选择对应平台的安装包；安装包文件名包含版本号，因此不要将旧文件名拼接到 latest 下载 URL。Prerelease 不作为 README 的默认下载目标，可通过所有版本入口查看。
+
 ## 准备版本
 
 根 `package.json` 是应用版本的唯一来源，`src-tauri/tauri.conf.json` 直接读取它。Cargo、workspace package 和 lockfile 中仍需保留相同版本，由脚本统一维护：

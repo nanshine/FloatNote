@@ -74,6 +74,6 @@ codec、文本区间变换、Markdown 语义上下文、精确文本匹配和标
 
 ### 应用更新
 
-`src/platform/updates.ts` 集中定义更新 DTO、命令和 `update-request` / `update-status` 事件。`src/shared/updates/controller.ts` 由持久主窗口唯一实例化，设置页通过事件请求检查/安装和获取状态；设置页本身不持有更新包。`src/note/updates.ts` 连接主窗口保存屏障及后台检查，`notes-state.saveBeforeUpdate` 在队列未持久化时拒绝安装。`src/settings/updates.ts` 使用纯文本展示远端更新说明。
+`src/platform/updates.ts` 集中定义更新 DTO、命令和 `update-request` / `update-status` 事件。`src/shared/updates/controller.ts` 由持久主窗口唯一实例化，设置页通过事件请求检查/安装和获取状态；设置页本身不持有更新包。`src/note/updates.ts` 连接主窗口保存屏障及后台检查，`notes-state.saveBeforeUpdate` 在队列未持久化时拒绝安装。`src/settings/updates.ts` 复用共享安全 Markdown renderer 展示远端更新说明，以局部紧凑样式限制滚动区域；链接通过平台打开接口处理，仅说明内容变化时重新渲染。
 
 首次启动时，配置读取通过 `src/platform/startup.ts` 等待 AppState 注册（仅对 state not managed 错误重试，最多 15 秒）。主窗口启动失败显示可重试空态，采集检测失败不显示未经确认的 macOS 权限说明。Windows 不需要辅助功能授权，但监听失败仍显示重试入口。正式版 working_dir 初始为空，创建第一个项目时用户选择父目录，在其下创建「未命名项目」，并记住该父目录；取消选择不会创建项目。debug profile 使用隔离 workspace。

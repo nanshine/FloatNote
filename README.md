@@ -9,11 +9,11 @@
 <div align="center">
   <p>一款悬浮在桌面上、帮助你从阅读到写作的本地笔记工具。</p>
   <p>
-    <a href="https://github.com/nanshine/FloatNote/releases/download/v0.2.0/FloatNote_0.2.0_aarch64.dmg"><strong>下载 macOS · Apple Silicon</strong></a>
+    <a href="https://github.com/nanshine/FloatNote/releases/latest"><strong>下载 macOS · Apple Silicon</strong></a>
     &nbsp;·&nbsp;
-    <a href="https://github.com/nanshine/FloatNote/releases/download/v0.2.0/FloatNote_0.2.0_x86_64.dmg"><strong>下载 macOS · Intel</strong></a>
+    <a href="https://github.com/nanshine/FloatNote/releases/latest"><strong>下载 macOS · Intel</strong></a>
     &nbsp;·&nbsp;
-    <a href="https://github.com/nanshine/FloatNote/releases/download/v0.2.0/FloatNote_0.2.0_x86_64-setup.exe"><strong>下载 Windows · x86_64</strong></a>
+    <a href="https://github.com/nanshine/FloatNote/releases/latest"><strong>下载 Windows · x86_64</strong></a>
   </p>
   <p><a href="https://github.com/nanshine/FloatNote/releases/latest">查看最新正式版本与更新说明</a></p>
 </div>
@@ -107,9 +107,11 @@
 
 ## 下载与开始使用
 
-- **Apple Silicon Mac**（M1/M2/M3/M4 及后续芯片）：[下载 `v0.2.0 .dmg`](https://github.com/nanshine/FloatNote/releases/download/v0.2.0/FloatNote_0.2.0_aarch64.dmg)
-- **Intel Mac**：[下载 `v0.2.0 .dmg`](https://github.com/nanshine/FloatNote/releases/download/v0.2.0/FloatNote_0.2.0_x86_64.dmg)
-- **Windows x86_64**：[下载 `v0.2.0` 安装包](https://github.com/nanshine/FloatNote/releases/download/v0.2.0/FloatNote_0.2.0_x86_64-setup.exe)
+以下链接自动跳转到 GitHub 最新正式发布版本，请在发布页的 Assets 中选择对应平台的安装包。
+
+- **Apple Silicon Mac**（M1/M2/M3/M4 及后续芯片）：[获取最新版 `.dmg`](https://github.com/nanshine/FloatNote/releases/latest)
+- **Intel Mac**：[获取最新版 `.dmg`](https://github.com/nanshine/FloatNote/releases/latest)
+- **Windows x86_64**：[获取最新版安装包](https://github.com/nanshine/FloatNote/releases/latest)
 - **所有版本与更新说明**：[查看 GitHub Releases](https://github.com/nanshine/FloatNote/releases)
 
 macOS 安装包已完成 Developer ID 签名与 Apple 公证。Windows 安装包支持应用内更新验签，但尚未配置 Authenticode，首次安装时 Windows 可能显示未知发布者或 SmartScreen 提示。

@@ -2,8 +2,10 @@
 import { expect, it, vi } from "vitest";
 import { mountUpdates } from "./updates";
 import { onUpdateStatus, requestUpdate, type UpdateStatus } from "../platform/updates";
+import { invoke } from "@tauri-apps/api/core";
+vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn().mockResolvedValue(undefined) }));
 vi.mock("../platform/updates", () => ({ onShowUpdateSettings: vi.fn().mockResolvedValue(() => {}), onUpdateStatus: vi.fn(), requestUpdate: vi.fn().mockResolvedValue(undefined) }));
-it("renders untrusted notes as text, unknown download size and retryable failure", async () => {
+it("keeps raw HTML inert and handles unknown download size and retryable failure", async () => {
   let render!: (status: UpdateStatus) => void;
   vi.mocked(onUpdateStatus).mockImplementation(async (handler) => { render = handler; return () => {}; });
   const root = document.createElement("div");
@@ -12,7 +14,7 @@ it("renders untrusted notes as text, unknown download size and retryable failure
   const info = { configured: true, currentVersion: "0.1.0", version: "0.2.0", notes: "<img src=x onerror=alert(1)>" };
   render({ phase: "downloading", info, progress: { downloaded: 2, total: null } });
   expect(root.querySelector("img")).toBeNull();
-  expect(root.querySelector("pre")?.textContent).toBe(info.notes);
+  expect(root.querySelector("[data-update-notes]")?.textContent).toBe(info.notes);
   expect(root.querySelector("progress")?.hasAttribute("value")).toBe(false);
   expect(root.querySelector<HTMLButtonElement>("[data-update-install]")?.disabled).toBe(true);
   render({ phase: "error", info, error: "network failed" });
@@ -22,6 +24,36 @@ it("renders untrusted notes as text, unknown download size and retryable failure
   expect(root.querySelector("[data-update-error-details]")?.textContent).toBe("network failed");
   root.querySelector<HTMLButtonElement>("[data-update-retry]")!.click();
   expect(requestUpdate).toHaveBeenCalledWith("install");
+});
+
+it("renders Markdown safely and preserves its DOM until the notes change", async () => {
+  let render!: (status: UpdateStatus) => void;
+  vi.mocked(onUpdateStatus).mockImplementation(async (handler) => { render = handler; return () => {}; });
+  const root = document.createElement("div");
+  await mountUpdates(root);
+  const info = { configured: true, currentVersion: "0.1.0", version: "0.2.0", notes: "## 更新亮点\n\n- **修复**窗口\n- 使用 `快捷键`\n\n[完整说明](https://example.com/releases)\n\n```text\nhello\n```\n\n[危险](javascript:alert(1))\n\n![远程图片](https://example.com/image.png)" };
+  render({ phase: "available", info });
+  const notes = root.querySelector<HTMLElement>("[data-update-notes]")!;
+  expect(notes.hidden).toBe(false);
+  expect(notes.querySelector("h2")?.textContent).toBe("更新亮点");
+  expect(notes.querySelectorAll("li")).toHaveLength(2);
+  expect(notes.querySelector("strong")?.textContent).toBe("修复");
+  expect(notes.querySelector("pre code")?.textContent).toBe("hello");
+  expect(notes.querySelector("img")).toBeNull();
+  expect(notes.querySelectorAll("a")).toHaveLength(1);
+  const link = notes.querySelector("a")!;
+  link.click();
+  expect(invoke).toHaveBeenCalledWith("open_url", { url: "https://example.com/releases" });
+  notes.scrollTop = 50;
+  render({ phase: "downloading", info, progress: { downloaded: 2, total: 10 } });
+  expect(notes.querySelector("a")).toBe(link);
+  expect(notes.scrollTop).toBe(50);
+  render({ phase: "available", info: { ...info, notes: "新说明" } });
+  expect(notes.textContent).toBe("新说明");
+  expect(notes.scrollTop).toBe(0);
+  render({ phase: "idle" });
+  expect(notes.hidden).toBe(true);
+  expect(notes.textContent).toBe("");
 });
 
 it("localizes an invalid feed response and offers a check retry", async () => {

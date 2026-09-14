@@ -13,7 +13,7 @@ mockIPC(() => null, { shouldMockEvents: true });
 const root = document.querySelector<HTMLElement>("#app")!;
 root.innerHTML = settingsShellMarkup();
 mountTabs(root);
-const info = { configured: true, currentVersion: "0.1.0", version: "0.2.0", notes: "新功能\n支持应用内更新，下载后自动保存笔记并重启。\n\n修复\n改善笔记保存的可靠性。" };
+const info = { configured: true, currentVersion: "0.1.0", version: "0.2.0", notes: "## 新功能\n- 支持**应用内更新**，下载后自动保存笔记并重启。\n- 使用 `快捷键` 快速记录。\n\n## 修复\n改善笔记保存的可靠性。\n\n[完整更新说明](https://example.com/releases)\n\n```text\nFloatNote 更新完成\n```" };
 await mountUpdates(root.querySelector<HTMLElement>("#update-settings")!);
 // Tauri's event mock supports emit but not emit_to; simulate the coordinator here.
 root.querySelector("[data-update-install]")!.addEventListener("click", () => {
