@@ -8,6 +8,9 @@ describe("application update UI", () => {
       await browser.waitUntil(() => browser.execute(() => document.body.dataset.reviewReady === "true"));
       assert.match(await $("[data-update-status]").getText(), /0.2.0/);
       assert.equal(await $("[data-update-notes]").isDisplayed(), true);
+      assert.equal(await $("[data-update-notes] h2").getText(), "新功能");
+      assert.equal(await $("[data-update-notes] strong").getText(), "应用内更新");
+      assert.equal(await $("[data-update-notes] pre code").getText(), "FloatNote 更新完成");
       await browser.saveScreenshot(`artifacts/browser-review/updates-${theme}.png`);
       await $("[data-update-install]").click();
       await browser.waitUntil(async () => (await $("[data-update-status]").getText()).includes("正在下载"));

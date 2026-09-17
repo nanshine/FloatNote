@@ -201,6 +201,54 @@ describe("note editor surface browser review", () => {
     assert.deepEqual(overflow, [true, true]);
   });
 
+  it("lets the final paragraph scroll to the middle of each writing surface", async () => {
+    await browser.url(REVIEW_URL + "?long");
+    await browser.waitUntil(() => browser.execute(() => document.body.dataset.reviewReady === "true"));
+    const positions = await browser.execute(() => [
+      ["#inbox-host", "#inbox-host"],
+      [".surface-piece-scroll", "#piece-host"],
+    ].map(([scrollSelector, editorSelector]) => {
+      const scrollport = document.querySelector<HTMLElement>(scrollSelector);
+      const paragraphs = document.querySelectorAll<HTMLElement>(editorSelector + " .editor > p");
+      const last = paragraphs.item(paragraphs.length - 1);
+      if (!scrollport || !last) throw new Error("missing long document: " + editorSelector);
+      scrollport.scrollTop = scrollport.scrollHeight;
+      const scrollRect = scrollport.getBoundingClientRect();
+      return {
+        lastBottom: last.getBoundingClientRect().bottom,
+        middle: scrollRect.top + scrollRect.height / 2,
+      };
+    }));
+    for (const position of positions) {
+      assert.ok(
+        position.lastBottom <= position.middle + 24,
+        "final paragraph stops " + Math.round(position.lastBottom - position.middle) + "px below the writing midpoint",
+      );
+    }
+  });
+
+  it("keeps full-width image selection chrome inside the horizontal viewport", async () => {
+    await browser.url(REVIEW_URL + "?image");
+    await browser.setWindowSize(700, 600);
+    await browser.waitUntil(() => browser.execute(() => document.body.dataset.reviewReady === "true"));
+    await $("#inbox-host .fn-structured-image__image").click();
+    const bounds = await browser.execute(() => {
+      const host = document.querySelector<HTMLElement>("#inbox-host");
+      const left = host?.querySelector<HTMLElement>(".fn-structured-image__resize--w");
+      const right = host?.querySelector<HTMLElement>(".fn-structured-image__resize--e");
+      if (!host || !left || !right) throw new Error("missing selected image controls");
+      const hostRect = host.getBoundingClientRect();
+      return {
+        hostLeft: hostRect.left,
+        hostRight: hostRect.right,
+        left: left.getBoundingClientRect().left,
+        right: right.getBoundingClientRect().right,
+      };
+    });
+    assert.ok(bounds.left >= bounds.hostLeft, "left image resize handle is clipped");
+    assert.ok(bounds.right <= bounds.hostRight, "right image resize handle is clipped");
+  });
+
   it("keeps list disclosure controls inside the surface with room for multi-digit markers", async () => {
     await browser.url(`${REVIEW_URL}?lists`);
     await browser.waitUntil(() => browser.execute(() => document.body.dataset.reviewReady === "true"));

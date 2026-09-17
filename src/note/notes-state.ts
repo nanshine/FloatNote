@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { withAppState } from "../platform/startup";
 import { save, confirm, open } from "@tauri-apps/plugin-dialog";
 
 /** read_note 命令返回：文件内容 + 磁盘 mtime（ms）。 */
@@ -66,7 +67,7 @@ export interface CurrentNote {
 }
 
 export async function getConfig(): Promise<Config> {
-  return invoke<Config>("get_config");
+  return withAppState(() => invoke<Config>("get_config"));
 }
 
 /** Patch config fields without touching the rest (read-merge-write). */

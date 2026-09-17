@@ -47,7 +47,9 @@ describe("split view CSS placement", () => {
     expect(css).toMatch(
       /\.piece-title-input\s*{[^}]*font-size:\s*calc\(var\(--editor-font,\s*15px\)\s*\+\s*11px\);/s,
     );
-    expect(editorCss).toMatch(/\.fn-note-structured-editor > \.editor\s*\{[^}]*padding:\s*16px 0;/s);
+    expect(editorCss).toMatch(
+      /\.fn-note-structured-editor > \.editor\s*\{[^}]*padding:\s*var\(--fn-editor-top-space\) 0 var\(--fn-editor-bottom-space\);/s,
+    );
     expect(editorSource).toContain("createStructuredMarkdownEditor");
     expect(pieceSwitcherSource).toContain('title.dataset.focusStyle = "quiet"');
     expect(css).toMatch(/\.piece-title-input:focus,[^{]*\.piece-title-input:focus-visible\s*\{[^}]*outline:\s*none;[^}]*box-shadow:\s*none;/s);
@@ -55,7 +57,7 @@ describe("split view CSS placement", () => {
   });
 
   it("removes the Inbox block gutter and handle surface", () => {
-    expect(editorCss).toMatch(/padding:\s*16px 0/);
+    expect(editorCss).toMatch(/padding:\s*var\(--fn-editor-top-space\) 0 var\(--fn-editor-bottom-space\)/);
     expect(css).not.toContain(".cm-block-handle");
     expect(css).not.toContain(".cm-block-gutter");
     expect(noteAppSource).not.toContain("blockHandleGutter");
@@ -102,7 +104,7 @@ describe("split view CSS placement", () => {
 
   it("fills empty structured editors and renders their ProseMirror-aware placeholders", () => {
     expect(editorCss).toMatch(/\.fn-structured-editor\s*{[^}]*display:\s*flex;[^}]*flex-direction:\s*column;/s);
-    expect(editorCss).toMatch(/\.fn-note-structured-editor\s*{[^}]*height:\s*100%;[^}]*min-height:\s*100%;/s);
+    expect(editorCss).toMatch(/\.fn-note-structured-editor\s*{[^}]*height:\s*auto;[^}]*min-height:\s*100%;/s);
     expect(editorCss).toMatch(/\.fn-note-structured-editor > \.editor\s*{[^}]*flex:\s*1 1 auto;/s);
     expect(editorCss).toMatch(/\.fn-structured-editor > \.editor > \.fn-empty-paragraph\s*{[^}]*position:\s*relative;/s);
     expect(editorCss).toMatch(
@@ -110,6 +112,21 @@ describe("split view CSS placement", () => {
     );
     expect(editorSource).toContain('class: "fn-empty-paragraph"');
     expect(editorSource).toContain('options.parent.addEventListener("pointerdown", focusFromHostWhitespace)');
+  });
+
+  it("keeps the active writing line comfortable at both scroll edges", () => {
+    expect(editorCss).toMatch(
+      /\.fn-note-structured-editor\s*\{[^}]*--fn-editor-top-space:\s*24px;[^}]*--fn-editor-bottom-space:\s*max\(24px,\s*50vh\);/s,
+    );
+    expect(editorCss).toMatch(
+      /\.fn-note-structured-editor > \.editor:has\(> :first-child > \.fn-structured-image:first-child\)\s*\{[^}]*--fn-editor-top-space:\s*52px;/s,
+    );
+    expect(editorCss).toMatch(
+      /\.fn-structured-image__tools\s*\{[^}]*bottom:\s*calc\(100% \+ 8px\);/s,
+    );
+    expect(editorCss).toMatch(
+      /\.fn-structured-image\s*\{[^}]*max-width:\s*calc\(100% - 8px\);[^}]*margin-inline:\s*4px;/s,
+    );
   });
 
   it("uses one note body surface instead of inbox and piece style forks", () => {

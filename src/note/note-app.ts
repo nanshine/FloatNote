@@ -1551,7 +1551,22 @@ async function init() {
 
 }
 
-void init().then(() => startUpdates()).catch(console.error);
+async function initialize() {
+  try {
+    await init();
+    startUpdates();
+  } catch (reason) {
+    console.error("Note initialization failed", reason);
+    clearEmptyState();
+    app.classList.add("state-path-error");
+    cleanupBodyEmpty = renderEmptyState(bodyEmptyRoot, {
+      title: "无法完成启动",
+      hint: "请重试以载入项目和新手引导。",
+      primary: { label: "重试", action: () => window.location.reload() },
+    });
+  }
+}
+await initialize();
 
 attachAutomationToasts();
 

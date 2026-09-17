@@ -45,8 +45,15 @@ entry that calls `floatnote::run()`.
 - `popup.rs`, `popup_hover.rs`, `shortcuts.rs`, `tray.rs`, `windows.rs`,
   `config.rs` — generation-aware popup cache, macOS passive hover relay, global
   shortcuts, tray menu, window management, and config load/save.
-- `window_chrome.rs` — Windows-only custom titlebar support: runtime
-  `set_decorations(false)` for `main`/`settings` plus DWM rounded corners and
+- `window_chrome.rs` — Windows-only custom titlebar support: `main`/`settings`
+  are created with `decorations: false` in `../tauri.windows.conf.json` to avoid
+  startup titlebar flashes; main is created hidden on both platforms and shown
+  by `windows::reveal_startup_window` on frontend readiness or 800ms after native
+  page-load completion, whichever comes first, after Windows chrome is applied. A
+  shared first-show gate prevents late timers from reopening a hidden window; the
+  static HTML recovery shell remains reachable even if application JS fails.
+  Runtime `set_decorations(false)` remains defensive,
+  with DWM rounded corners and
   shadow; the frontend draws min/max/close in `src/shared/ui/window-caption.ts`.
   macOS keeps the native Overlay traffic lights, so the module stays fully
   `cfg(target_os = "windows")`-gated.

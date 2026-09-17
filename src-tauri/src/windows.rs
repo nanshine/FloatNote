@@ -1,4 +1,28 @@
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
+
+#[derive(Default)]
+pub struct StartupVisibility(AtomicBool);
+
+/// Both frontend readiness and the native slow-start fallback use this gate.
+/// Once shown, a later timer must not reopen a window the user has hidden.
+#[tauri::command]
+pub fn reveal_startup_window(window: WebviewWindow) -> Result<(), String> {
+    if window.label() != "main" {
+        return Err("startup visibility is only available to main".into());
+    }
+    let state = window.state::<StartupVisibility>();
+    if state.0.swap(true, Ordering::SeqCst) {
+        return Ok(());
+    }
+    #[cfg(target_os = "windows")]
+    crate::window_chrome::strip_decorations(&window);
+    if let Err(error) = window.show() {
+        state.0.store(false, Ordering::SeqCst);
+        return Err(error.to_string());
+    }
+    Ok(())
+}
 
 /// Retain a navigation request until the settings webview consumes it.
 #[derive(Default)]

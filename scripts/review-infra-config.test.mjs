@@ -117,13 +117,30 @@ test("GitHub Actions validate changes and publish both native macOS architecture
   assert.doesNotMatch(release, /\$is_draft" != "true"/);
   assert.match(release, /Published releases are immutable/);
   assert.match(release, /FloatNote_\$\{app_version\}_\$\{\{ matrix\.arch \}\}\.dmg/);
+  assert.match(release, /FloatNote_\$\{\{ matrix\.arch \}\}\.dmg/);
   assert.match(release, /FloatNote_\$\{app_version\}_\$\{\{ matrix\.arch \}\}\.app\.tar\.gz/);
+  assert.match(release, /FloatNote_x86_64-setup\.exe/);
   assert.match(release, /prepare_release:/);
   assert.match(release, /gh api --method POST/);
   assert.match(release, /gh api --paginate/);
   assert.doesNotMatch(release, /releases\/tags\/\$RELEASE_TAG/);
   assert.match(release, /needs: prepare_release/);
   assert.match(release, /RELEASE_ID: \$\{\{ needs\.prepare_release\.outputs\.release_id \}\}/);
+});
+
+test("README platform links download fixed-name assets from the latest release", async () => {
+  const readme = await readFile(new URL("README.md", root), "utf8");
+
+  for (const asset of [
+    "FloatNote_aarch64.dmg",
+    "FloatNote_x86_64.dmg",
+    "FloatNote_x86_64-setup.exe",
+  ]) {
+    assert.match(
+      readme,
+      new RegExp(`https://github\\.com/nanshine/FloatNote/releases/latest/download/${asset.replaceAll(".", "\\.")}`),
+    );
+  }
 });
 
 test("macOS releases import Developer ID credentials, notarize, and verify artifacts", async () => {

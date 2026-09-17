@@ -1,5 +1,6 @@
 import { onShowUpdateSettings, onUpdateStatus, requestUpdate, type UpdateStatus } from "../platform/updates";
 import { createIcon } from "../shared/ui/icon";
+import { fillMarkdown } from "../shared/markdown/render";
 
 function updateErrorCopy(error: string, hasUpdate: boolean): { title: string; message: string } {
   if (/valid release json/i.test(error)) {
@@ -25,7 +26,7 @@ export async function mountUpdates(root: HTMLElement): Promise<() => void> {
       </div>
       <button class="settings-text-button update-retry" type="button" data-update-retry>${createIcon({ phosphor: "ph ph-arrow-clockwise" }).outerHTML}<span>重试</span></button>
     </div>
-    <pre data-update-notes hidden></pre><progress data-update-progress aria-label="更新下载进度" hidden></progress>
+    <div class="update-notes" data-update-notes role="region" aria-label="更新说明" tabindex="0" hidden></div><progress data-update-progress aria-label="更新下载进度" hidden></progress>
     <button class="settings-text-button update-install" type="button" data-update-install hidden>${createIcon({ phosphor: "ph ph-download-simple" }).outerHTML}<span>下载并更新</span></button></div></div>`;
   const card = root.querySelector<HTMLElement>(".update-card")!;
   const text = root.querySelector<HTMLElement>("[data-update-status]")!;
@@ -39,6 +40,7 @@ export async function mountUpdates(root: HTMLElement): Promise<() => void> {
   const install = root.querySelector<HTMLButtonElement>("[data-update-install]")!;
   const retry = root.querySelector<HTMLButtonElement>("[data-update-retry]")!;
   let retryRequest: "check" | "install" = "check";
+  let renderedNotes = "";
   const showError = (message: string, hasUpdate: boolean) => {
     const copy = updateErrorCopy(message, hasUpdate);
     errorPanel.hidden = false;
@@ -56,8 +58,13 @@ export async function mountUpdates(root: HTMLElement): Promise<() => void> {
     install.hidden = !status.info?.version;
     errorPanel.hidden = !status.error;
     if (status.error) showError(status.error, Boolean(status.info?.version));
-    notes.hidden = !status.info?.notes;
-    notes.textContent = status.info?.notes ?? "";
+    const content = status.info?.notes ?? "";
+    notes.hidden = !content.trim();
+    if (content !== renderedNotes) {
+      fillMarkdown(notes, content);
+      notes.scrollTop = 0;
+      renderedNotes = content;
+    }
     progress.hidden = status.phase !== "downloading";
     if (status.progress?.total) {
       progress.max = status.progress.total;

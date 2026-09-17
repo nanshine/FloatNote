@@ -2,6 +2,20 @@
 
 FloatNote 使用 Vite 多页面应用：根目录 HTML 是各 WebView 入口。`src/note/main.ts` 只启动笔记窗口；`src/note/note-app.ts` 组装笔记编辑器、项目/文档切换、保存、watcher、助手和窗口事件。
 
+主窗口在 Windows/macOS 均隐藏创建。前端就绪后调用 `reveal_startup_window`
+立即显示完整界面；原生 `on_page_load(Finished)` 在 800ms 后兜底显示加载界面。
+两个路径共用首次显示闸门，延迟回调不会重新打开已被用户隐藏的窗口。Windows
+显示前完成无边框、圆角与阴影设置，macOS 保留原生 Overlay 标题栏。
+`index.html` 自带内联样式的启动壳及无需 JavaScript 的重新加载链接；`main.ts` 经
+`startup-shell.ts` 动态加载 `boot-app.ts` 中的应用样式、编辑器及初始化逻辑。
+初始化完成或应用内错误页就绪后才移除启动壳、解除正文的 `inert`。
+加载界面只显示笔记图标、状态文字及尊重减少动态效果设置的圆点动画；
+加载超过 15 秒才显示继续等待/重新加载提示（CSS 也提供入口脚本失败时的兜底），
+允许较慢启动最终成功；模块加载或外层
+初始化失败保留启动壳和重试入口，重试整页刷新以清理部分注册的监听器和编辑器。
+Vite 的前端文件监听排除 `src-tauri/**`，避免 Windows 编译产物被占用时导致
+`EBUSY` 并中断 dev 服务；Rust 文件变动仍由 Tauri CLI 负责。
+
 ## 边界
 
 - `src/platform/` 是共享 invoke/event gateway 与跨 feature DTO 所在处。`onboarding.ts` 统一引导状态、权限、runtime profile 与 preview 合同；`selection-popup.ts` 定义划词快照、一次性翻译和关联提问合同，`selection-message.ts` 是首条 selection callout 的唯一 codec。feature 自己的窗口命令仍在相应 feature 内调用；跨 feature 合同应放在这里。
@@ -60,4 +74,6 @@ codec、文本区间变换、Markdown 语义上下文、精确文本匹配和标
 
 ### 应用更新
 
-`src/platform/updates.ts` 集中定义更新 DTO、命令和 `update-request` / `update-status` 事件。`src/shared/updates/controller.ts` 由持久主窗口唯一实例化，设置页通过事件请求检查/安装和获取状态；设置页本身不持有更新包。`src/note/updates.ts` 连接主窗口保存屏障及后台检查，`notes-state.saveBeforeUpdate` 在队列未持久化时拒绝安装。`src/settings/updates.ts` 使用纯文本展示远端更新说明。
+`src/platform/updates.ts` 集中定义更新 DTO、命令和 `update-request` / `update-status` 事件。`src/shared/updates/controller.ts` 由持久主窗口唯一实例化，设置页通过事件请求检查/安装和获取状态；设置页本身不持有更新包。`src/note/updates.ts` 连接主窗口保存屏障及后台检查，`notes-state.saveBeforeUpdate` 在队列未持久化时拒绝安装。`src/settings/updates.ts` 复用共享安全 Markdown renderer 展示远端更新说明，以局部紧凑样式限制滚动区域；链接通过平台打开接口处理，仅说明内容变化时重新渲染。
+
+首次启动时，配置读取通过 `src/platform/startup.ts` 等待 AppState 注册（仅对 state not managed 错误重试，最多 15 秒）。主窗口启动失败显示可重试空态，采集检测失败不显示未经确认的 macOS 权限说明。Windows 不需要辅助功能授权，但监听失败仍显示重试入口。正式版 working_dir 初始为空，创建第一个项目时用户选择父目录，在其下创建「未命名项目」，并记住该父目录；取消选择不会创建项目。debug profile 使用隔离 workspace。

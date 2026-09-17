@@ -10,4 +10,6 @@ Tauri 的增量资源复制可能在 `target` 或旧 bundle 中留下已从源�
 
 Apple Silicon 在 `macos-15` runner 上构建 `aarch64-apple-darwin`，Intel 在 `macos-15-intel` runner 上构建 `x86_64-apple-darwin`；Windows 使用原生 runner。Rust TLS 与目标架构由 Cargo/Tauri 正常解析，不再需要单独提供 Node runtime。
 
+Windows MSVC 目标通过根目录 `.cargo/config.toml` 统一启用 `crt-static`，让 Rust 和 `aws-lc-sys` 等原生依赖使用一致的静态 CRT 编译方式。仅依赖 Tauri 打包阶段的静态 VC 运行库链接设置，会使按动态 CRT 编译的 AWS-LC 引用 `__imp_memchr` / `__imp_strchr`，导致 LNK2019 / LNK1120。该配置同时适用于从仓库根目录和 `src-tauri/` 执行的 Cargo 命令，不影响 macOS；首次应用会重新编译依赖，无须清空整个 `target`。
+
 应用版本以根 `package.json` 为唯一来源；Tauri 配置通过 `"version": "../package.json"` 读取它。`scripts/release-version.mjs` 同步 Cargo、workspace package 和 lockfile 中的版本副本，并在发布前校验 Git 标签。

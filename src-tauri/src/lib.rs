@@ -40,6 +40,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(updates::UpdateState::default())
+        .manage(windows::StartupVisibility::default())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
@@ -90,6 +91,25 @@ pub fn run() {
     }
 
     builder
+        .on_page_load(|webview, payload| {
+            // Give fast startup a chance to reveal the finished UI directly.
+            // Native fallback also works when the frontend entry script fails.
+            if webview.label() == "main"
+                && matches!(payload.event(), tauri::webview::PageLoadEvent::Finished)
+            {
+                if let Some(window) = webview.app_handle().get_webview_window("main") {
+                    tauri::async_runtime::spawn(async move {
+                        tokio::time::sleep(std::time::Duration::from_millis(800)).await;
+                        let app = window.app_handle().clone();
+                        let _ = app.run_on_main_thread(move || {
+                            if let Err(error) = windows::reveal_startup_window(window) {
+                                eprintln!("failed to show startup window: {error}");
+                            }
+                        });
+                    });
+                }
+            }
+        })
         .setup(|app| {
             let app_config_dir = app
                 .path()
@@ -220,6 +240,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            windows::reveal_startup_window,
             updates::update_check,
             updates::update_download,
             updates::update_prepare,

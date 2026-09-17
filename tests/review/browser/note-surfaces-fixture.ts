@@ -9,6 +9,8 @@ if (!inboxHost || !pieceHost) throw new Error("note surface fixture hosts are mi
 const fixtureParams = new URLSearchParams(window.location.search);
 const markdown = fixtureParams.has("long")
   ? Array.from({ length: 80 }, (_, index) => `第 ${index + 1} 段正文`).join("\n\n")
+  : fixtureParams.has("image")
+    ? "![宽图片](/assets/01-hero.png)"
   : fixtureParams.has("special")
     ? [
       "> [!quote] [Browser](https://example.com)",

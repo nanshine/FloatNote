@@ -20,7 +20,7 @@
         "height": 520,
         "minWidth": 360,
         "minHeight": 360,
-        "visible": true,
+        "visible": false,
         "alwaysOnTop": true,
         "titleBarStyle": "Overlay",
         "hiddenTitle": true,

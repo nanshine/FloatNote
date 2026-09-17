@@ -1,0 +1,4 @@
+# Keep native dependencies (including aws-lc-sys) consistent with Tauri's
+# statically linked Windows VC runtime during release packaging.
+[target.'cfg(all(target_os = "windows", target_env = "msvc"))']
+rustflags = ["-C", "target-feature=+crt-static"]

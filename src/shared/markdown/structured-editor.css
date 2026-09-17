@@ -10,7 +10,9 @@
  * surface. Feature capabilities may decorate the document, but must not fork
  * its typography, spacing, focus treatment or empty-document hit area. */
 .fn-note-structured-editor {
-  height: 100%;
+  --fn-editor-top-space: 24px;
+  --fn-editor-bottom-space: max(24px, 50vh);
+  height: auto;
   min-height: 100%;
   font-size: var(--editor-font, 15px);
   line-height: 1.6;
@@ -20,7 +22,14 @@
   box-sizing: border-box;
   flex: 1 1 auto;
   min-height: 100%;
-  padding: 16px 0;
+  padding: var(--fn-editor-top-space) 0 var(--fn-editor-bottom-space);
+}
+
+/* An image toolbar opens above the selected image. When an image is on the
+ * first line, reserve its full height inside the scrollport instead of
+ * clipping the controls against the top edge. */
+.fn-note-structured-editor > .editor:has(> :first-child > .fn-structured-image:first-child) {
+  --fn-editor-top-space: 52px;
 }
 
 .fn-structured-editor > .editor {
@@ -505,11 +514,12 @@
   position: relative;
   display: flex;
   width: fit-content;
-  max-width: 100%;
+  max-width: calc(100% - 8px);
   flex-direction: column;
   align-items: stretch;
   gap: 3px;
   margin-block: 0.45em;
+  margin-inline: 4px;
   vertical-align: middle;
 }
 
