@@ -36,7 +36,7 @@ Team API 私钥只会解码到 runner 的临时目录，并通过 `APPLE_API_ISS
 
 ## README 下载入口
 
-README 的下载链接统一使用 GitHub 的 `releases/latest` 入口，自动跟随最新正式 Release，无需在发版时修改版本号。用户在发布页的 Assets 中选择对应平台的安装包；安装包文件名包含版本号，因此不要将旧文件名拼接到 latest 下载 URL。Prerelease 不作为 README 的默认下载目标，可通过所有版本入口查看。
+README 的三个平台下载链接统一使用 GitHub 的 `releases/latest/download/<固定文件名>` 入口，自动从最新正式 Release 直接下载对应安装包，无需在发版时修改版本号。发布任务除保留带版本号的安装包外，还会上传 `FloatNote_aarch64.dmg`、`FloatNote_x86_64.dmg` 和 `FloatNote_x86_64-setup.exe` 三个固定名称的下载副本；这些名称属于公开下载接口，修改时必须同步更新 README。Prerelease 不作为 README 的默认下载目标，可通过所有版本入口查看。
 
 ## 准备版本
 
@@ -75,6 +75,8 @@ git push origin v0.2.0
 - `x86_64`：Intel Mac 的 `.dmg` 和 `.app.tar.gz`。
 
 macOS 用户首次安装下载 `.dmg`；`.app.tar.gz` 是应用内更新包，完成签名、公证、staple 和归档后使用 Tauri signer 生成 `.sig`。Windows x86_64 构建生成 NSIS `-setup.exe` 和对应 `.sig`，同一 EXE 用于首次安装和更新。Updater 签名不等于 Windows Authenticode 签名；当前 Windows 工作流尚未配置代码签名证书。
+
+每个 macOS 构建还会把已经验证的版本化 DMG 复制为对应架构的固定名称，Windows 构建会把已经生成更新签名的版本化 EXE 复制为固定名称；固定名称副本只服务 README 的 latest 直链，更新清单仍引用带版本号的资产，避免改变客户端更新协议。
 
 每个构建任务会在上传前验证对应产物：
 

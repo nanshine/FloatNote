@@ -258,13 +258,16 @@ jobs:
             'console.log(JSON.parse(require("fs").readFileSync("package.json", "utf8")).version)')"
           asset_directory="$RUNNER_TEMP/release-assets"
           dmg_asset_path="$asset_directory/FloatNote_${app_version}_${{ matrix.arch }}.dmg"
+          latest_dmg_asset_path="$asset_directory/FloatNote_${{ matrix.arch }}.dmg"
           app_archive_path="$asset_directory/FloatNote_${app_version}_${{ matrix.arch }}.app.tar.gz"
           mkdir -p "$asset_directory"
           cp "$dmg_path" "$dmg_asset_path"
+          cp "$dmg_path" "$latest_dmg_asset_path"
           tar -czf "$app_archive_path" \
             -C "$(dirname "$app_path")" \
             "$(basename "$app_path")"
           echo "DMG_ASSET_PATH=$dmg_asset_path" >> "$GITHUB_ENV"
+          echo "LATEST_DMG_ASSET_PATH=$latest_dmg_asset_path" >> "$GITHUB_ENV"
           echo "APP_ARCHIVE_PATH=$app_archive_path" >> "$GITHUB_ENV"
 
       - name: Sign final updater archive
@@ -286,7 +289,7 @@ jobs:
           )"
           upload_base="$(printf '%s\n' "$upload_url" | sed 's/{.*$//')"
 
-          for asset_path in "$DMG_ASSET_PATH" "$APP_ARCHIVE_PATH" "$APP_ARCHIVE_PATH.sig"; do
+          for asset_path in "$DMG_ASSET_PATH" "$LATEST_DMG_ASSET_PATH" "$APP_ARCHIVE_PATH" "$APP_ARCHIVE_PATH.sig"; do
             asset_name="$(basename "$asset_path")"
             encoded_asset_name="$(node -e \
               'process.stdout.write(encodeURIComponent(process.argv[1]))' \
@@ -377,5 +380,7 @@ jobs:
           asset="$RUNNER_TEMP/FloatNote_${version}_x86_64-setup.exe"
           cp "${installers[0]}" "$asset"
           npm run tauri signer sign -- "$asset"
+          latest_asset="$RUNNER_TEMP/FloatNote_x86_64-setup.exe"
+          cp "$asset" "$latest_asset"
           test "$(gh api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" --jq '.draft')" = true
-          gh release upload "$RELEASE_TAG" "$asset" "$asset.sig" --clobber
+          gh release upload "$RELEASE_TAG" "$asset" "$asset.sig" "$latest_asset" --clobber
