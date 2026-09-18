@@ -1,19 +1,19 @@
 {
-  "version": "0.2.2",
-  "notes": "- Apple Silicon（M1/M2/M3/M4 及后续芯片）请选择 `.dmg` 文件名包含 `aarch64` 的版本。\n- Intel Mac 请选择 `.dmg` 文件名包含 `x86_64` 的版本。\n- Windows x86_64 用户请选择 `-setup.exe` 安装包。\n- 已安装包含更新器的版本，可以在「设置 → 通用 → 应用更新」中升级；`.sig` 为更新验签文件，无需手动打开。\n\n\n**Full Changelog**: https://github.com/nanshine/FloatNote/compare/v0.2.1...v0.2.2",
-  "pub_date": "2026-09-17T14:00:55Z",
+  "version": "0.3.0",
+  "notes": "- Apple Silicon（M1/M2/M3/M4 及后续芯片）请选择 `.dmg` 文件名包含 `aarch64` 的版本。\n- Intel Mac 请选择 `.dmg` 文件名包含 `x86_64` 的版本。\n- Windows x86_64 用户请选择 `-setup.exe` 安装包。\n- 已安装包含更新器的版本，可以在「设置 → 通用 → 应用更新」中升级；`.sig` 为更新验签文件，无需手动打开。\n\n\n**Full Changelog**: https://github.com/nanshine/FloatNote/compare/v0.2.2...v0.3.0",
+  "pub_date": "2026-09-18T00:16:02Z",
   "platforms": {
     "darwin-aarch64": {
-      "url": "https://github.com/nanshine/FloatNote/releases/download/v0.2.2/FloatNote_0.2.2_aarch64.app.tar.gz",
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSR2F1TGtpazdBTzJ3TnEzdW1JWXpnNkQwVm41OFFFMjJwVytNamhTeHVYa0tQQnppd2lwblVhckR3VkgwN0ZBVjR2TVhjU1ZpQVN0NVJQSDRiUk5oM0YvcHZmd1o5ZVFRPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg5NjUyNDc3CWZpbGU6RmxvYXROb3RlXzAuMi4yX2FhcmNoNjQuYXBwLnRhci5negp6dm9wQzhxZGc3QnpSbXF3c2ZZYkhEOUZNYUx2cGpUVCtBbHF4QmZZbWVGRWtuWUY5T3JKNTZBajQ0R1JvRkNXb0t2OVVXd3k0Nm80cTByTDJReGNDdz09Cg=="
+      "url": "https://github.com/nanshine/FloatNote/releases/download/v0.3.0/FloatNote_0.3.0_aarch64.app.tar.gz",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSR2F1TGtpazdBT3g2cFJPWjNxOG5kSjMwTlNGS0kyckdaeWJkTFBVaEl3Q1d3ZTFIQVlZR1FrYTUwQk9tRjZtdFFuN09IcmRlamppd00wWjQrVnNnTy9md3o1UDhmZGcwPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg5Njg5MzU4CWZpbGU6RmxvYXROb3RlXzAuMy4wX2FhcmNoNjQuYXBwLnRhci5negpCTUowT3dxaWJuYzZkQkwyNzZpbW9Lb2RMSm90Skdkb3FFTzNVRElaNjFKTHZYSlFNaU1vNGgwVDRqanA3Zi9QRmFaeHZCaXhWRk9CNDIwTnB5VXFEZz09Cg=="
     },
     "darwin-x86_64": {
-      "url": "https://github.com/nanshine/FloatNote/releases/download/v0.2.2/FloatNote_0.2.2_x86_64.app.tar.gz",
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSR2F1TGtpazdBTzJyQTFlaVJvTlJVN0pHTE9ZR0VyRXNEMURYZmhQSzJQZ1EvZEhXSHkvKzdNc29JMXArM2lyWXlCdS94cHFyN1V1dTluTlNFSGF2TGpDRUMwRmpZUGd3PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg5NjUzNDg3CWZpbGU6RmxvYXROb3RlXzAuMi4yX3g4Nl82NC5hcHAudGFyLmd6ClVqdWd6aXp4RzNIQ0tDaEUzalZKTzJMQVVhOG9ZUnl5WW42MlNNaWw5M0ZINVorTW5zVWtnR1RLY2hVRlNtUzdqazY4U2dxREpxR1V3bThLNmdBaEJBPT0K"
+      "url": "https://github.com/nanshine/FloatNote/releases/download/v0.3.0/FloatNote_0.3.0_x86_64.app.tar.gz",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSR2F1TGtpazdBTzB3L2ZnRnRieUtJMWZVV29PbWN1T0s1MW1HVTVKN1JocTMvVkFNU2VhNzVZSDdGMnFjdFRZS080ejQ5Q1l2VHZXMmFYNnpweVV4K29QTE9vVTdRN3dZPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg5NjkwMDYyCWZpbGU6RmxvYXROb3RlXzAuMy4wX3g4Nl82NC5hcHAudGFyLmd6CjV1Rkt4R244M241ZWc0SnNBUDZXUFBTcy80aUFyUGowVEsybGMwVkhpSERzekh1eVpIa0t4Y1RSS1RGSE11WVZyTlNRTGpSaEs0U2RmMjROS25UaEN3PT0K"
     },
     "windows-x86_64": {
-      "url": "https://github.com/nanshine/FloatNote/releases/download/v0.2.2/FloatNote_0.2.2_x86_64-setup.exe",
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSR2F1TGtpazdBTzlydTJabjZldDd2eFZCYlo3RnNsVlF5VTNPQzVSeDVZbFNvempSUlh4cHlXRlFWVFpoUHoyNzR5b2ovMk9oaTdoSGtCdHIzU0xwUlJHYVlNNnJhN0FZPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg5NjUyNzAzCWZpbGU6RmxvYXROb3RlXzAuMi4yX3g4Nl82NC1zZXR1cC5leGUKNXRJcTdGRHBlUDVoZFZVQ21VTHBuQVkzL2ZBV1ZjZk1PdGovUmt0YXdkd3RYbWRVN0VMc2tPZ29ZZ212WFhCalhKbzV3cEtKRGtsT3pzYms5aE1GQVE9PQo="
+      "url": "https://github.com/nanshine/FloatNote/releases/download/v0.3.0/FloatNote_0.3.0_x86_64-setup.exe",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSR2F1TGtpazdBTzY2V1VxaEFGZEJpMnpoZnBQUTVadjdQUVJqb25qTG1FWGJ1WnM3MCtYU214YklHU0FVVlNQWkcyMndMR2NTN0FrajJ2M1JiTHBzSGdsNjZ0cDl2L2dvPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg5Njg5NzMxCWZpbGU6RmxvYXROb3RlXzAuMy4wX3g4Nl82NC1zZXR1cC5leGUKd3hBSWlud09ZYmxFQU9NMUdjQklPcnZZbERBTGFKWnI4Ui9vZXRoSGxnZFQyOXovWGxHVWs2TUQwWUorYVZGeVFSTS8vZGh2ZUZkdjJkZUxHYXdRQ3c9PQo="
     }
   }
 }
