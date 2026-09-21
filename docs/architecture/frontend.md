@@ -27,7 +27,10 @@ Vite 的前端文件监听排除 `src-tauri/**`，避免 Windows 编译产物被
   `.fn-note-structured-editor` 正文表面；字体、段落与块级样式、焦点反馈、空文档满高和
   留白点击行为不能在 feature 层分叉。Inbox 只额外提供标签栏、annotation marks、
   筛选 projection 与外部采集入口。列表编号由 `ordered_list.order`
-  与 `<ol>` 处理，列表后段落不继承缩进；折叠只存在 plugin decoration state。公式是
+  与 `<ol>` 处理，列表后段落不继承缩进；折叠只存在 plugin decoration state。
+  有子列表的父项首段在无选区时按 Enter，会把光标后的内容拆成新项：折叠时插入整个父项之后，
+  成为同级项；展开时插入现有子列表开头，与原子项同级，原子树始终留在原父项。
+  行尾 Enter 使用同一规则创建空项；Shift+Enter 始终在当前段落内软换行。聊天输入的发送快捷键优先于该规则。公式是
   KaTeX 原子节点，表格、任务项、图片属性和引用卡均为可交互结构化节点；只有代码块
   NodeView 内保留隔离的 CodeMirror，并按语言懒加载高亮。
   空文档的 ProseMirror 编辑面铺满所属滚动区，点击正文留白也会把光标定位到空段落；

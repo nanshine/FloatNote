@@ -5,7 +5,8 @@ import { InputRule, wrappingInputRule } from "@milkdown/kit/prose/inputrules";
 import type { NodeViewConstructor } from "@milkdown/kit/prose/view";
 import { Fragment } from "@milkdown/kit/prose/model";
 import { Decoration, DecorationSet } from "@milkdown/kit/prose/view";
-import { NodeSelection, Plugin, PluginKey } from "@milkdown/kit/prose/state";
+import { NodeSelection, Plugin, PluginKey, TextSelection } from "@milkdown/kit/prose/state";
+import type { EditorView } from "@milkdown/kit/prose/view";
 import { blockquoteSchema, codeBlockSchema, hrSchema, imageSchema, linkSchema, listItemSchema } from "@milkdown/kit/preset/commonmark";
 import { Compartment, EditorState as CodeState } from "@codemirror/state";
 import { EditorView as CodeView, keymap as codeKeymap } from "@codemirror/view";
@@ -612,6 +613,41 @@ export const slashBlockquoteInputRule = $inputRule((ctx) => wrappingInputRule(
 ));
 
 const listFoldKey = new PluginKey<DecorationSet>("floatnote-list-fold");
+
+/** Split the visible parent text without transferring its existing subtree. */
+export function handleListParentEnter(view: EditorView, event: KeyboardEvent): boolean {
+  if (event.key !== "Enter" || event.shiftKey || event.altKey || event.ctrlKey || event.metaKey
+    || event.isComposing || view.composing || !view.editable) return false;
+  const { state } = view;
+  const { selection } = state;
+  if (!(selection instanceof TextSelection) || !selection.empty) return false;
+  const { $from } = selection;
+  if ($from.depth < 2 || $from.parent.type.name !== "paragraph") return false;
+  const item = $from.node(-1);
+  if (item.type.name !== "list_item" || $from.index(-1) !== 0) return false;
+  let nestedOffset = -1;
+  let nestedList: typeof item | undefined;
+  item.forEach((child, offset) => {
+    if (!nestedList && (child.type.name === "bullet_list" || child.type.name === "ordered_list")) {
+      nestedList = child;
+      nestedOffset = offset;
+    }
+  });
+  if (!nestedList) return false;
+  const itemPos = $from.before($from.depth - 1);
+  const folded = listFoldKey.getState(state)?.find(itemPos, itemPos + 1)
+    .some((decoration) => decoration.from === itemPos && decoration.spec.floatnoteFolded) ?? false;
+  const paragraph = $from.parent.copy($from.parent.content.cut($from.parentOffset));
+  const template = folded ? item : nestedList.firstChild!;
+  const attrs = { ...template.attrs, ...(template.attrs.checked != null ? { checked: false } : {}) };
+  const sibling = item.type.create(attrs, paragraph);
+  const tr = state.tr.delete($from.pos, $from.end());
+  const insertAt = tr.mapping.map(folded ? itemPos + item.nodeSize : itemPos + 1 + nestedOffset + 1);
+  tr.insert(insertAt, sibling);
+  tr.setSelection(TextSelection.create(tr.doc, insertAt + 2));
+  view.dispatch(tr.scrollIntoView());
+  return true;
+}
 
 export const quoteCardPlugin = $prose((ctx) => new Plugin({
   props: {

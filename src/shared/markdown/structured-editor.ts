@@ -17,7 +17,7 @@ import { Slice, type Node as ProseNode } from "@milkdown/kit/prose/model";
 import { EditorState, Plugin, Selection as ProseSelection, TextSelection, type Selection } from "@milkdown/kit/prose/state";
 import { Decoration, DecorationSet, type EditorView } from "@milkdown/kit/prose/view";
 import { $prose } from "@milkdown/kit/utils";
-import { floatnoteEditorRuntime, floatnoteMarkdownPlugins } from "./milkdown-plugins";
+import { floatnoteEditorRuntime, floatnoteMarkdownPlugins, handleListParentEnter } from "./milkdown-plugins";
 
 export type MarkdownDocumentKind = "inbox" | "piece" | "document" | "composer";
 
@@ -151,7 +151,8 @@ export async function createStructuredMarkdownEditor(
       if (transaction.docChanged && !suppressChange) options.onChange?.(normalizeFloatNoteMarkdown(serializer(nextState.doc)));
       if (!nextState.selection.eq(previousSelection)) options.onSelectionChange?.(nextState.selection);
     },
-    handleKeyDown: (_view, event) => options.handleKeyDown?.(event, api) ?? false,
+    handleKeyDown: (currentView, event) => options.handleKeyDown?.(event, api)
+      || handleListParentEnter(currentView, event),
   });
   view.dom.addEventListener("focusin", () => options.onFocus?.());
 

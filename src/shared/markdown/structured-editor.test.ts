@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn().mockResolvedValue(undefined) }));
 import { createStructuredMarkdownEditor, type StructuredMarkdownEditor } from "./structured-editor";
+import { undo, redo } from "@milkdown/kit/prose/history";
 
 if (!Range.prototype.getClientRects) {
   Object.defineProperty(Range.prototype, "getClientRects", { value: () => [] });
@@ -165,6 +166,97 @@ describe("structured markdown editor", () => {
     toggle!.click();
     expect(toggle!.closest("li")?.classList.contains("fn-list-item--folded")).toBe(true);
     expect(editor.getMarkdown()).toContain("child");
+  });
+
+  it.each([false, true].flatMap((folded) => [0, 2, 4].map((offset) => ({ folded, offset }))))(
+    "splits parent text at $offset with folded=$folded while retaining its subtree",
+    async ({ folded, offset }) => {
+      const parent = document.createElement("div");
+      document.body.append(parent);
+      editor = await createStructuredMarkdownEditor({ parent, context: { kind: "piece" },
+        markdown: "- ABCD\n  - child\n    - grandchild\n- next" });
+      if (folded) parent.querySelector<HTMLButtonElement>(".fn-list-fold-toggle:not([hidden])")!.click();
+      const before = editor.getMarkdown();
+      editor.withView((view) => {
+        view.state.doc.descendants((node, pos) => {
+          if (node.isText && node.text === "ABCD") editor!.setSelection(pos + offset);
+        });
+      });
+      editor.contentDOM.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+      editor.withView((view) => {
+        const list = view.state.doc.firstChild!;
+        const original = list.firstChild!;
+        const children = original.child(1);
+        expect(original.firstChild!.textContent).toBe("ABCD".slice(0, offset));
+        expect(list.childCount).toBe(folded ? 3 : 2);
+        const added = folded ? list.child(1) : children.firstChild!;
+        expect(added.childCount).toBe(1);
+        expect(added.textContent).toBe("ABCD".slice(offset));
+        expect(children.childCount).toBe(folded ? 1 : 2);
+        const child = children.child(folded ? 0 : 1);
+        expect(child.firstChild!.textContent).toBe("child");
+        expect(child.child(1).textContent).toBe("grandchild");
+        expect(view.state.selection.$from.parent).toBe(added.firstChild);
+        expect(view.state.selection.$from.parentOffset).toBe(0);
+        const after = editor!.getMarkdown();
+        expect(undo(view.state, view.dispatch)).toBe(true);
+        expect(editor!.getMarkdown()).toBe(before);
+        expect(redo(view.state, view.dispatch)).toBe(true);
+        expect(editor!.getMarkdown()).toBe(after);
+      });
+      expect(parent.querySelector("li")!.classList.contains("fn-list-item--folded")).toBe(folded);
+    },
+  );
+
+  it.each([false, true])("inserts a soft break without moving children with folded=%s", async (folded) => {
+    const parent = document.createElement("div");
+    document.body.append(parent);
+    editor = await createStructuredMarkdownEditor({ parent, context: { kind: "piece" },
+      markdown: "- ABCD\n  - child" });
+    if (folded) parent.querySelector<HTMLButtonElement>(".fn-list-fold-toggle:not([hidden])")!.click();
+    editor.withView((view) => view.state.doc.descendants((node, pos) => {
+      if (node.isText && node.text === "ABCD") editor!.setSelection(pos + 2);
+    }));
+    editor.contentDOM.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", shiftKey: true, bubbles: true }));
+    editor.withView((view) => {
+      const list = view.state.doc.firstChild!;
+      expect(list.childCount).toBe(1);
+      expect(list.firstChild!.child(1).textContent).toBe("child");
+      const paragraph = list.firstChild!.firstChild!;
+      expect(paragraph.child(1).type.name).toBe("hardbreak");
+      expect(paragraph.textContent).toBe("AB\nCD");
+    });
+    expect(parent.querySelector("li")!.classList.contains("fn-list-item--folded")).toBe(folded);
+  });
+
+  it.each([false, true])("preserves rich text and nested folds inside ordered task lists with folded=%s", async (folded) => {
+    const parent = document.createElement("div");
+    document.body.append(parent);
+    editor = await createStructuredMarkdownEditor({ parent, context: { kind: "piece" },
+      markdown: "- outer\n\n  3. [x] AB**CD**\n     - [x] child\n       - grandchild\n  4. next" });
+    const toggles = parent.querySelectorAll<HTMLButtonElement>(".fn-list-fold-toggle:not([hidden])");
+    toggles[2].click();
+    if (folded) toggles[1].click();
+    editor.withView((view) => view.state.doc.descendants((node, pos) => {
+      if (node.isText && node.text === "AB") editor!.setSelection(pos + 2);
+    }));
+    editor.contentDOM.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    editor.withView((view) => {
+      const ordered = view.state.doc.firstChild!.firstChild!.child(1);
+      expect(ordered.attrs.order).toBe(3);
+      const original = ordered.firstChild!;
+      expect(original.attrs.checked).toBe(true);
+      expect(original.firstChild!.textContent).toBe("AB");
+      const children = original.child(1);
+      const added = folded ? ordered.child(1) : children.firstChild!;
+      expect(added.attrs.checked).toBe(false);
+      expect(added.firstChild!.firstChild!.marks.map((mark) => mark.type.name)).toContain("strong");
+      expect(added.textContent).toBe("CD");
+      expect(children.child(folded ? 0 : 1).firstChild!.textContent).toBe("child");
+    });
+    const foldedItems = [...parent.querySelectorAll("li.fn-list-item--folded")];
+    expect(foldedItems).toHaveLength(folded ? 2 : 1);
+    expect(foldedItems.some((item) => item.querySelector("p")?.textContent === "child")).toBe(true);
   });
 
   it("edits GFM task items through a structural checkbox", async () => {
