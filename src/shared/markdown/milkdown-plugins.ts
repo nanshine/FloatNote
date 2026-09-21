@@ -739,7 +739,9 @@ export const listFoldPlugin = $prose(() => new Plugin({
           )]);
         }
       } else {
-        next = next.remove(next.find(update.pos, update.pos + 1, (spec) => Boolean(spec.floatnoteFolded)));
+        // find includes touching boundaries, including the previous sibling's end.
+        next = next.remove(next.find(update.pos, update.pos + 1, (spec) => Boolean(spec.floatnoteFolded))
+          .filter((decoration) => decoration.from === update.pos));
       }
       return next;
     },

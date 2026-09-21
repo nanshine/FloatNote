@@ -168,6 +168,31 @@ describe("structured markdown editor", () => {
     expect(editor.getMarkdown()).toContain("child");
   });
 
+  it.each([0, 1, 2, 3])("unfolds only sibling %s when all siblings are folded", async (index) => {
+    const parent = document.createElement("div");
+    document.body.append(parent);
+    editor = await createStructuredMarkdownEditor({
+      parent,
+      context: { kind: "piece" },
+      markdown: ["first", "second", "third", "last"].map((label) => `- ${label}\n  - child`).join("\n"),
+    });
+    const markdown = editor.getMarkdown();
+    const toggles = [...parent.querySelectorAll<HTMLButtonElement>(".fn-list-fold-toggle:not([hidden])")];
+    expect(toggles).toHaveLength(4);
+    const foldedStates = () => toggles.map((toggle) => toggle.closest("li")!.classList.contains("fn-list-item--folded"));
+    toggles.forEach((toggle) => toggle.click());
+    expect(foldedStates()).toEqual([true, true, true, true]);
+
+    toggles[index].click();
+    expect(foldedStates()).toEqual(toggles.map((_, sibling) => sibling !== index));
+    expect(toggles.map((toggle) => toggle.getAttribute("aria-expanded")))
+      .toEqual(toggles.map((_, sibling) => String(sibling === index)));
+    expect(editor.getMarkdown()).toBe(markdown);
+
+    toggles[index].click();
+    expect(foldedStates()).toEqual([true, true, true, true]);
+  });
+
   it.each([false, true].flatMap((folded) => [0, 2, 4].map((offset) => ({ folded, offset }))))(
     "splits parent text at $offset with folded=$folded while retaining its subtree",
     async ({ folded, offset }) => {
