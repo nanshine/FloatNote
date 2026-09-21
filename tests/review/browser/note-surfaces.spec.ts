@@ -38,6 +38,30 @@ describe("note editor surface browser review", () => {
     await browser.waitUntil(() => browser.execute(() => document.body.dataset.reviewReady === "true"));
   });
 
+  it("recovers slight horizontal overflow without losing vertical scroll position", async () => {
+    for (const selector of ["#inbox-host", ".surface-piece-scroll"]) {
+      const before = await browser.execute((target) => {
+        const host = document.querySelector<HTMLElement>(target)!;
+        const overflow = document.createElement("div");
+        overflow.id = "scroll-regression-overflow";
+        overflow.style.cssText = `flex:none;width:${host.clientWidth + 12}px;height:1200px`;
+        host.append(overflow);
+        host.scrollTop = 100;
+        host.scrollLeft = 7;
+        return host.scrollLeft;
+      }, selector);
+      assert.equal(before, 7, "fixture must actually produce horizontal overflow");
+      await browser.waitUntil(() => browser.execute((target) => {
+        const host = document.querySelector<HTMLElement>(target)!;
+        return host.scrollLeft === 0 && host.scrollTop === 100;
+      }, selector));
+      await browser.execute((target) => {
+        document.getElementById("scroll-regression-overflow")?.remove();
+        document.querySelector<HTMLElement>(target)!.scrollTop = 0;
+      }, selector);
+    }
+  });
+
   it("fills both empty columns and accepts clicks near their bottom edge", async () => {
     for (const selector of ["#inbox-host", "#piece-host"]) {
       const content = await $(`${selector} .editor`);

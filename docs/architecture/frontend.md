@@ -25,7 +25,9 @@ Vite 的前端文件监听排除 `src-tauri/**`，避免 Windows 编译产物被
   `onboarding.ts` 是非模态引导 controller，负责状态持久化、内容卡、锚定 coach mark、窗口自动扩宽和确认退出；新建与打开已有项目均进入五步引导，独立文档只介绍写作与 AI。行动步骤只展开面板，不创建空待办；行动、双栏和 AI 打开后显示本步结果卡，用户点击下一步或完成才推进，也可跳过，返回不会撤销已写入的内容。`structured-inbox.ts` 在捕获内容确实插入并排入保存后通过 `onCaptureCompleted` 通知它。
   Inbox、Piece 和独立文档不仅共享真实 ProseMirror 文档树，也共享唯一的
   `.fn-note-structured-editor` 正文表面；字体、段落与块级样式、焦点反馈、空文档满高和
-  留白点击行为不能在 feature 层分叉。Inbox 只额外提供标签栏、annotation marks、
+  留白点击行为不能在 feature 层分叉。`note-scroll.ts` 在编辑事务后及原生滚动事件中
+  将正文到 `.note-scroll` 的外层横向偏移归零，避免行首被裁切；保留纵向跟随和内部代码块等独立滚动。
+  Inbox 只额外提供标签栏、annotation marks、
   筛选 projection 与外部采集入口。列表编号由 `ordered_list.order`
   与 `<ol>` 处理，列表后段落不继承缩进；折叠只存在 plugin decoration state。
   有子列表的父项首段在无选区时按 Enter，会把光标后的内容拆成新项：折叠时插入整个父项之后，

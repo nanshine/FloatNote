@@ -18,6 +18,7 @@ import { EditorState, Plugin, Selection as ProseSelection, TextSelection, type S
 import { Decoration, DecorationSet, type EditorView } from "@milkdown/kit/prose/view";
 import { $prose } from "@milkdown/kit/utils";
 import { floatnoteEditorRuntime, floatnoteMarkdownPlugins, handleListParentEnter } from "./milkdown-plugins";
+import { guardNoteHorizontalScroll } from "./note-scroll";
 
 export type MarkdownDocumentKind = "inbox" | "piece" | "document" | "composer";
 
@@ -138,6 +139,7 @@ export async function createStructuredMarkdownEditor(
   const parser = milkdown.ctx.get(parserCtx);
   const serializer = milkdown.ctx.get(serializerCtx);
   const currentRoot = () => milkdown.ctx.get(rootDOMCtx);
+  const noteScroll = noteSurface ? guardNoteHorizontalScroll(view.dom) : undefined;
   if (options.placeholder) {
     view.dom.dataset.placeholder = options.placeholder;
   }
@@ -148,6 +150,7 @@ export async function createStructuredMarkdownEditor(
       const previousSelection = view.state.selection;
       const nextState = view.state.apply(transaction);
       view.updateState(nextState);
+      noteScroll?.reset();
       if (transaction.docChanged && !suppressChange) options.onChange?.(normalizeFloatNoteMarkdown(serializer(nextState.doc)));
       if (!nextState.selection.eq(previousSelection)) options.onSelectionChange?.(nextState.selection);
     },
@@ -237,6 +240,7 @@ export async function createStructuredMarkdownEditor(
     },
     withView: (run) => run(view),
     async destroy() {
+      noteScroll?.destroy();
       options.parent.removeEventListener("pointerdown", focusFromHostWhitespace);
       await milkdown.destroy();
     },
