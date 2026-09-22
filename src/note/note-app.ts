@@ -96,6 +96,7 @@ import {
 import { createStructuredInbox } from "./structured-inbox";
 import { imageSrc } from "./image-fs";
 import { attachStructuredMedia } from "./structured-media";
+import { openSettings } from "../platform/onboarding";
 import { createOnboardingController, type OnboardingController } from "./onboarding";
 
 
@@ -135,7 +136,6 @@ const pieceEmptyRoot = document.querySelector<HTMLElement>("#piece-empty-root")!
 
 const DEFAULT_PROJECT_NAME = "未命名项目";
 const DEFAULT_PIECE_TITLE = "未命名作品";
-const DEFAULT_DOCUMENT_TITLE = "未命名文档";
 
 const session = createNoteSession();
 let onboardingController: OnboardingController | null = null;
@@ -171,9 +171,7 @@ function renderWindowState(state: WindowState) {
         icon: "pen-nib",
         title: "把读到的变成学会的",
         hint: "收集材料，写下观点，让 AI 陪你深入思考。",
-        primary: { label: "创建第一个项目", action: () => void createDefaultProject() },
-        secondary: { label: "打开已有项目", action: () => void openExistingProjectFlow() },
-        tertiary: { label: "只新建一篇文档", action: () => void createStandaloneDocument() },
+        primary: { label: "创建新项目", action: () => void createDefaultProject() },
       });
       break;
     case "PATH_ERROR":
@@ -933,31 +931,20 @@ async function bootstrapProjects(config: Awaited<ReturnType<typeof getConfig>>) 
   renderWindowState(outcome);
 }
 
-/** NO_PROJECT 空态"新建项目"：有工作目录则在目录下直接建默认名项目；无工作目录时
- * 弹目录选择让用户定位。后端 create_project 会把所选目录记为工作目录，前端镜像到
- * session.currentStartDir。不预建 piece、不弹输入框——之后可在切换菜单里重命名。 */
+/** Welcome creation uses the saved or per-user default folder without a picker. */
+let creatingDefaultProject = false;
 async function createDefaultProject() {
-  let parent = session.currentStartDir;
-  if (!parent) {
-    const picked = await open({ directory: true, multiple: false });
-    if (typeof picked !== "string") return;
-    parent = picked;
+  if (creatingDefaultProject) return;
+  creatingDefaultProject = true;
+  try {
+    const project = await createProject(null, DEFAULT_PROJECT_NAME);
+    session.currentStartDir = parentDir(project.path);
+    await openProject(project);
+  } catch (error) {
+    showToast("无法创建项目：" + String(error) + "。可从项目菜单选择其他位置新建。");
+  } finally {
+    creatingDefaultProject = false;
   }
-  const project = await createProject(parent, DEFAULT_PROJECT_NAME);
-  session.currentStartDir = parent;
-  await openProject(project);
-}
-
-/** NO_PROJECT 空态"新建文档"：有工作目录则在目录下直接建；无工作目录时走保存对话框
- * 让用户选位置（文档不更新工作目录）。载入并聚焦标题栏全选，键入即替换标题。 */
-async function createStandaloneDocument() {
-  const entry = session.currentStartDir
-    ? await createNote(session.currentStartDir, DEFAULT_DOCUMENT_TITLE)
-    : await createDocument();
-  if (!entry) return;
-  await rememberDocument(entry.path);
-  await openDocument(entry);
-  focusPieceTitle();
 }
 
 /** NO_PIECE 空态"新建作品"：默认名建 piece，载入并聚焦标题栏全选。 */
@@ -1426,7 +1413,9 @@ async function init() {
       if (!current.open) await toggleAssistantFromChrome();
       onboardingController?.assistantOpened();
     },
-    captureShortcut: () => config.shortcut_capture,
+    captureShortcut: async () => (await getConfig()).shortcut_capture,
+    toggleShortcut: async () => (await getConfig()).shortcut_toggle,
+    openSettings,
   });
   await onboardingController.start();
 

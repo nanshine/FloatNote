@@ -21,10 +21,12 @@ entry that calls `floatnote::run()`.
 - `updates.rs` — 主窗口专用更新命令、验签下载和安装状态，发布公钥通过编译环境注入。
 - `notes.rs` — note file read/write, `rename_note`/`delete_note`/`create_note`
   (atomic write, mtime), image path safety, project-space listing.
-- `project.rs` — project-space discovery, pieces, `sanitize_folder_name`.
+- `project.rs` — project-space discovery, pieces, `sanitize_folder_name`, and
+  first-project tutorial seeding from `resources/onboarding/` (one writing file).
 - `versions.rs` — snapshot/restore/purge per-note version history.
 - `chat_history.rs` — `ChatHistoryStore` (production `~/.floatnote/chat-history`, debug profile data directory).
-- `paths.rs` — one-time production/debug runtime profile and all config/data/workspace paths.
+- `paths.rs` — one-time production/debug runtime profile and all config/data/workspace paths; default project roots use the OS
+  Documents folder (including Windows redirection) while preserving saved paths and debug isolation.
 - `commands/onboarding.rs` — atomic onboarding state, capture permission, runtime profile DTO and debug-only preview state.
 - `watcher.rs` — `notify` file watcher + self-write suppress list
   (`mark_self_write` BEFORE writes to avoid TOCTOU; uses `into_inner()` to

@@ -58,11 +58,12 @@ describe("onboarding browser review", () => {
     await $("button=下一步").click();
     await $("button=打开 AI 助手").click();
     await browser.waitUntil(async () => (await $("#onboarding-root h2").getText()) === "认识苏格拉底 AI");
-    await $("button=完成引导").click();
+    await $("button=下一步").click();
+    await $("button=开始使用").click();
     await browser.waitUntil(() => browser.execute(() => document.body.dataset.onboardingStatus === "completed"));
   });
 
-  for (const scene of ["welcome", "capture", "capture-success", "capture-permission"]) {
+  for (const scene of ["welcome", "capture", "capture-success", "capture-permission", "access"]) {
     it(`reviews the real ${scene} card at narrow width`, async () => {
       await browser.setWindowSize(380, 520);
       await browser.url(`${URL}?scene=${scene}`);
@@ -71,5 +72,35 @@ describe("onboarding browser review", () => {
       assert.equal(await browser.execute(() => document.documentElement.scrollWidth > innerWidth), false);
     });
   }
+
+  it("renders tutorial syntax and examples in the real editor", async () => {
+    await browser.setWindowSize(380, 640);
+    await browser.url(`${URL}?scene=tutorial`);
+    await browser.waitUntil(() => browser.execute(() => document.body.dataset.reviewReady === "true"));
+    const content = await browser.execute(() => {
+      const editor = document.querySelector(".ProseMirror")!;
+      return {
+        heading: editor.querySelector("h1")?.textContent,
+        bold: [...editor.querySelectorAll("strong")].some((node) => node.textContent === "核心结论"),
+        quote: !!editor.querySelector("blockquote"),
+        code: editor.textContent?.includes('const thought ='),
+        files: editor.textContent?.includes("_tasks.md"),
+      };
+    });
+    assert.equal(content.heading, "认识 FloatNote 与 Markdown");
+    assert.ok(content.bold && content.quote && content.code && content.files);
+    await browser.saveScreenshot("artifacts/browser-review/onboarding-tutorial.png");
+  });
+
+  it("renders the starter material as a sourced quote card", async () => {
+    await browser.setWindowSize(640, 640);
+    await browser.url(`${URL}?scene=tutorial-inbox`);
+    await browser.waitUntil(() => browser.execute(() => document.body.dataset.reviewReady === "true"));
+    const source = await $(".fn-quote-card__source a");
+    assert.equal(await source.getText(), "浮记 — 让思考落地");
+    assert.equal(await source.getAttribute("href"), "https://floatnote.ink/");
+    assert.ok((await $(".fn-quote-card__content").getText()).includes("以前介绍一个想法"));
+    await browser.saveScreenshot("artifacts/browser-review/onboarding-inbox.png");
+  });
 
 });

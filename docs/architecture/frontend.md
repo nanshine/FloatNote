@@ -22,7 +22,7 @@ Vite 的前端文件监听排除 `src-tauri/**`，避免 Windows 编译产物被
 - `src/shared/` 放跨 feature 的 UI、Markdown、escape、快捷键和 toast；不能包含 feature 状态。`src/shared/markdown/structured-editor.ts` 是唯一编辑边界，headless Milkdown 组装 ProseMirror、CommonMark/GFM、公式、自定义节点和 parser/serializer；业务层只调用其 load/replace/checkpoint/read-only/selection 接口。`milkdown-plugins.ts` 持有列表折叠、公式、嵌套代码编辑器、表格工具、图片、引用卡、annotation mark 与 assistant ref。`render.ts` 从同一 Remark GFM/Math 方言产生安全只读 HTML，原始 HTML 与远程图片不会执行或加载。`src/shared/ui/modal-paper.ts` 统一管理 body-level 纸张弹窗的 inert、焦点边界、Escape、portal 注册和焦点恢复。
 - `src/styles/` 是设计系统 token 层（`primitives` → `semantic` → `base`/`components`，由 `index.css` 聚合并被四个窗口链入）；`src/shared/ui/` 放跨窗口共享组件（Button/Icon/Menu/Scrollbar/EmptyState）。详见 `docs/development/design-system.md`。
 - `src/note/` 管理结构化编辑、项目空间、任务、文本标注、图片与笔记窗口布局。
-  `onboarding.ts` 是非模态引导 controller，负责状态持久化、内容卡、锚定 coach mark、窗口自动扩宽和确认退出；新建与打开已有项目均进入五步引导，独立文档只介绍写作与 AI。行动步骤只展开面板，不创建空待办；行动、双栏和 AI 打开后显示本步结果卡，用户点击下一步或完成才推进，也可跳过，返回不会撤销已写入的内容。`structured-inbox.ts` 在捕获内容确实插入并排入保存后通过 `onCaptureCompleted` 通知它。
+  `onboarding.ts` 是非模态引导 controller，负责状态持久化、内容卡、锚定 coach mark、窗口自动扩宽和确认退出；新建与打开已有项目均进入六步引导，独立文档介绍写作、AI 与打开/收起窗口。最后一步读取当前快捷键配置，提供 `open_settings` 入口；打开设置不自动完成引导，点击「开始使用」才持久化完成。采集和窗口快捷键均读取当前配置并按平台格式化（macOS 使用 ⌥/⌘，Windows 使用 Alt/Ctrl）。欢迎空态仅保留「创建新项目」，默认请求后端解析用户保存目录，无需文件夹选择器；已有项目和独立文档仍可从顶部项目菜单打开或创建。行动步骤只展开面板，不创建空待办；行动、双栏和 AI 打开后显示本步结果卡，用户点击下一步或完成才推进，也可跳过，返回不会撤销已写入的内容。`structured-inbox.ts` 在捕获内容确实插入并排入保存后通过 `onCaptureCompleted` 通知它。
   Inbox、Piece 和独立文档不仅共享真实 ProseMirror 文档树，也共享唯一的
   `.fn-note-structured-editor` 正文表面；字体、段落与块级样式、焦点反馈、空文档满高和
   留白点击行为不能在 feature 层分叉。`note-scroll.ts` 在编辑事务后及原生滚动事件中

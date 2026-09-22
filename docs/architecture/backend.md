@@ -94,3 +94,7 @@ macOS 划线权限使用 `refresh_capture_availability` 返回 `{ permission, mo
 ### 应用更新
 
 `updates.rs` 使用 `tauri-plugin-updater` 实现 `update_check`、`update_download`（IPC Channel 进度）、`update_prepare`、`update_install`、`update_release`。这些命令验证调用窗口为 `main`，更新包和安装状态保存在独立的 `UpdateState` 中，不开放插件的直接前端安装权限。公钥从发布环境编译注入，空公钥禁用检查；网络只通过 HTTPS 更新端点。Agent 的更新锁与新请求登记串行化，活动任务存在时拒绝安装准备。
+
+首次安装且尚未创建入门项目时，`create_project` 使用 `project::create_starter_project`，将 `src-tauri/resources/onboarding/` 中内置的官网示例、三项行动和单篇 Markdown 教程写入新目录（离线可用），普通后续项目仍只创建空 `_inbox.md`。`Config.starter_project_created` 独立于引导重播状态，通用配置更新保留此字段；已有用户不自动补写教程，也不覆盖已有目录。`open_settings` 命令复用托盘的设置窗口入口。
+
+`create_project.root` 可省略或传 null：按已保存的 `working_dir`、debug profile 的隔离 workspace、系统文档目录下的 `FloatNote` 依次解析；系统无法解析文档目录时回退到用户主目录下的 `FloatNote`。显式指定的目录优先。Windows 通过 Tauri `document_dir()` 使用 Known Folder 的实际路径，支持重定向，不拼接用户名。创建成功后记录实际父目录；启动时不自动创建生产项目。

@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from "vitest";
+import starterInbox from "../../src-tauri/resources/onboarding/inbox.md?raw";
 import { undo } from "@milkdown/kit/prose/history";
 import { decodeInbox, encodeInbox } from "@floatnote/note-logic";
 import { createStructuredMarkdownEditor, type StructuredMarkdownEditor } from "../shared/markdown/structured-editor";
@@ -14,6 +15,28 @@ describe("structured inbox annotation bridge", () => {
   afterEach(async () => {
     await editor?.destroy();
     document.body.replaceChildren();
+  });
+
+  it("loads the starter quote as a source card and preserves browser metadata on save", async () => {
+    const decoded = decodeInbox(starterInbox);
+    expect(decoded.warnings).toEqual([]);
+    expect(decoded.metadata.quoteSources).toEqual([
+      { cardFrom: decoded.markdown.indexOf("> [!quote]"), bundleId: "com.google.Chrome" },
+    ]);
+    const parent = document.createElement("div");
+    document.body.append(parent);
+    editor = await createStructuredMarkdownEditor({ parent, context: { kind: "inbox" }, markdown: decoded.markdown });
+    editor.withView((view) => applyQuoteSources(view, editor!.getMarkdown(), decoded.metadata));
+    const source = parent.querySelector<HTMLAnchorElement>(".fn-quote-card__source a");
+    expect(source?.textContent).toBe("浮记 — 让思考落地");
+    expect(source?.getAttribute("href")).toBe("https://floatnote.ink/");
+    expect(parent.querySelector(".fn-quote-card__content")?.textContent).toContain("以前介绍一个想法");
+    expect(parent.textContent).not.toContain("floatnote:bid");
+    const markdown = editor.getMarkdown();
+    const quoteSources = editor.withView((view) => quoteSourcesFromNodes(view, markdown));
+    const saved = encodeInbox(markdown, { ...decoded.metadata, quoteSources });
+    expect(saved).toContain("<!-- floatnote:bid=com.google.Chrome -->");
+    expect(decodeInbox(saved).metadata.quoteSources[0].bundleId).toBe("com.google.Chrome");
   });
 
   it("maps Markdown offsets to marks and back after canonical serialization", async () => {

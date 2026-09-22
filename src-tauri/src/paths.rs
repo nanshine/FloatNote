@@ -101,9 +101,67 @@ pub(crate) fn floatnote_home() -> Option<PathBuf> {
         .or_else(|| user_home_dir().map(|home| home.join(".floatnote")))
 }
 
+/// Resolve defaults per OS user, preserving explicit/saved locations and debug isolation.
+/// Documents comes from Tauri's OS resolver (including redirected Windows folders).
+pub fn resolve_project_root(
+    requested: Option<&str>,
+    saved: Option<&str>,
+    profile: Option<&RuntimeProfile>,
+    documents: Option<&Path>,
+    home: Option<&Path>,
+) -> Result<PathBuf, String> {
+    let explicit = requested.filter(|value| !value.trim().is_empty());
+    let saved = saved.filter(|value| !value.trim().is_empty());
+    let root = explicit
+        .or(saved)
+        .map(PathBuf::from)
+        .or_else(|| profile.and_then(|value| value.workspace_dir.clone()))
+        .or_else(|| documents.or(home).map(|base| base.join("FloatNote")))
+        .ok_or("无法确定当前用户的默认保存位置，请选择项目目录")?;
+    if !root.is_absolute() {
+        return Err("项目目录必须是绝对路径，请重新选择保存位置".into());
+    }
+    Ok(root)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn project_defaults_preserve_user_paths_and_debug_isolation() {
+        let root = crate::testutil::tempdir();
+        let documents = root.path().join("redirected-documents");
+        let home = root.path().join("user-home");
+        let saved = root.path().join("my-notes");
+        let explicit = root.path().join("chosen-location");
+        let resolve = |requested, saved, profile, documents| {
+            resolve_project_root(requested, saved, profile, documents, Some(&home)).unwrap()
+        };
+        assert_eq!(
+            resolve(None, None, None, Some(&documents)),
+            documents.join("FloatNote")
+        );
+        assert_eq!(resolve(None, None, None, None), home.join("FloatNote"));
+        assert_eq!(resolve(None, saved.to_str(), None, Some(&documents)), saved);
+        assert_eq!(
+            resolve(explicit.to_str(), saved.to_str(), None, Some(&documents)),
+            explicit
+        );
+        let profile = resolve_runtime_profile(
+            root.path(),
+            Some(&home),
+            root.path(),
+            true,
+            Some("onboarding"),
+        );
+        assert_eq!(
+            resolve(None, None, Some(&profile), Some(&documents)),
+            profile.workspace_dir.unwrap()
+        );
+        assert!(resolve_project_root(None, None, None, None, None).is_err());
+        assert!(resolve_project_root(Some("relative"), None, None, None, None).is_err());
+    }
 
     #[test]
     fn debug_profiles_are_fully_isolated() {

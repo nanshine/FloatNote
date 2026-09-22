@@ -15,6 +15,7 @@ const PREVIEW_SCENES: &[&str] = &[
     "split-wide",
     "assistant-unconfigured",
     "assistant-configured-empty",
+    "access",
 ];
 
 #[derive(Serialize)]
@@ -207,4 +208,9 @@ mod tests {
             CapturePermissionState::NotRequired
         );
     }
+}
+
+#[tauri::command]
+pub fn open_settings(app: tauri::AppHandle) {
+    crate::windows::show_settings(&app);
 }

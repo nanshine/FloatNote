@@ -111,7 +111,8 @@ export async function setRecentDocuments(recent: string[]): Promise<void> {
   await updateConfig({ recent_documents: recent });
 }
 
-export async function createProject(root: string, name: string): Promise<ProjectEntry> {
+/** A null root uses the backend’s saved or per-user default project directory. */
+export async function createProject(root: string | null, name: string): Promise<ProjectEntry> {
   return invoke<ProjectEntry>("create_project", { root, name });
 }
 

@@ -4,6 +4,11 @@ import "@phosphor-icons/web/regular";
 import { mockIPC, mockWindows } from "@tauri-apps/api/mocks";
 import { createOnboardingController } from "../../../src/note/onboarding";
 import type { OnboardingState, OnboardingStep } from "../../../src/platform/onboarding";
+import starterInbox from "../../../src-tauri/resources/onboarding/inbox.md?raw";
+import { decodeInbox } from "@floatnote/note-logic";
+import { applyQuoteSources } from "../../../src/note/capture";
+import guide from "../../../src-tauri/resources/onboarding/guide.md?raw";
+import { createStructuredMarkdownEditor } from "../../../src/shared/markdown/structured-editor";
 import { renderEmptyState } from "../../../src/shared/ui/empty-state";
 
 const params = new URLSearchParams(location.search);
@@ -43,7 +48,8 @@ const controller = createOnboardingController({
   setTasksOpen: (open) => { tasks = open; panel.style.display = open ? "flex" : "none"; },
   tasksOpen: () => tasks,
   openAssistant: async () => { app.dataset.assistantOpen = "true"; controller.assistantOpened(); },
-  captureShortcut: () => "⌥⌘C",
+  captureShortcut: async () => "Alt+Cmd+C",
+    toggleShortcut: async () => "Alt+Ctrl+N", openSettings: async () => {},
 });
 document.querySelector("#tasks-toggle")!.addEventListener("click", () => {
   tasks = !tasks; panel.style.display = tasks ? "flex" : "none"; controller.tasksChanged();
@@ -54,10 +60,16 @@ if (scene === "welcome") {
   const openProject = () => { project = true; content.replaceChildren(); app.classList.remove("state-no-project"); controller.projectOpened(); };
   renderEmptyState(content, {
     icon: "pen-nib", title: "把读到的变成学会的", hint: "收集材料，写下观点，让 AI 陪你深入思考。",
-    primary: { label: "创建第一个项目", action: openProject },
-    secondary: { label: "打开已有项目", action: openProject },
-    tertiary: { label: "只新建一篇文档", action: () => { content.replaceChildren(); controller.documentOpened(); } },
+    primary: { label: "创建新项目", action: openProject },
   });
+}
+if (scene === "tutorial" || scene === "tutorial-inbox") {
+  state = { ...state, status: "completed", step: "access" };
+  content.style.overflowY = "auto";
+  const decoded = decodeInbox(starterInbox);
+  const inbox = scene === "tutorial-inbox";
+  const editor = await createStructuredMarkdownEditor({ parent: content, context: { kind: inbox ? "inbox" : "piece" }, markdown: inbox ? decoded.markdown : guide });
+  if (inbox) editor.withView((view) => applyQuoteSources(view, editor.getMarkdown(), decoded.metadata));
 }
 await controller.start();
 document.body.dataset.reviewReady = "true";

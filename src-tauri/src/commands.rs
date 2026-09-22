@@ -35,6 +35,7 @@ pub async fn set_config(
     let mut candidate = new_config;
     candidate.ai_settings = current.ai_settings;
     candidate.onboarding = current.onboarding;
+    candidate.starter_project_created = current.starter_project_created;
     let theme_changed = current.theme != candidate.theme;
     let theme = candidate.theme;
     crate::config::save(&state.config_path, &candidate).map_err(|error| error.to_string())?;
@@ -141,27 +142,36 @@ pub fn resolve_projects(paths: Vec<String>) -> Vec<project::ProjectEntry> {
 
 #[tauri::command]
 pub async fn create_project(
+    app: tauri::AppHandle,
     state: State<'_, AppState>,
-    root: String,
+    root: Option<String>,
     name: String,
 ) -> Result<project::ProjectEntry, String> {
-    let entry = project::create_project(std::path::Path::new(&root), &name)
-        .map_err(|error| error.to_string())?;
+    let _transaction = state.ai_settings_tx.lock().await;
+    let mut candidate = state.config.lock().unwrap().clone();
+    let root = crate::paths::resolve_project_root(
+        root.as_deref(),
+        candidate.working_dir.as_deref(),
+        crate::paths::runtime_profile(),
+        app.path().document_dir().ok().as_deref(),
+        app.path().home_dir().ok().as_deref(),
+    )?;
+    let starter = candidate.should_create_starter_project();
+    let entry = if starter {
+        project::create_starter_project(&root, &name)
+    } else {
+        project::create_project(&root, &name)
+    }
+    .map_err(|error| error.to_string())?;
     state
         .authorized_roots
         .authorize(std::path::Path::new(&entry.path));
-    // 隐式自动记录：项目新建时，将其所在目录记为工作目录。这是工作目录的唯一来源
-    // ——没有设置入口，用户也不感知。失败不阻塞项目创建本身。
-    {
-        let _transaction = state.ai_settings_tx.lock().await;
-        let mut candidate = state.config.lock().unwrap().clone();
-        candidate.working_dir = Some(root.clone());
-        if let Err(error) = crate::config::save(&state.config_path, &candidate) {
-            eprintln!("warn: failed to persist working_dir: {error}");
-        } else {
-            *state.config.lock().unwrap() = candidate;
-        }
+    candidate.working_dir = Some(root.to_string_lossy().into_owned());
+    candidate.starter_project_created |= starter;
+    if let Err(error) = crate::config::save(&state.config_path, &candidate) {
+        eprintln!("warn: failed to persist project configuration: {error}");
     }
+    *state.config.lock().unwrap() = candidate;
     Ok(entry)
 }
 

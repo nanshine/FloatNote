@@ -137,6 +137,33 @@ pub fn create_project(root: &Path, name: &str) -> std::io::Result<ProjectEntry> 
     })
 }
 
+/// Create tutorial contents only inside a newly allocated project folder.
+pub fn create_starter_project(root: &Path, name: &str) -> std::io::Result<ProjectEntry> {
+    let entry = create_project(root, name)?;
+    let dir = Path::new(&entry.path);
+    let result = (|| {
+        crate::notes::write_atomic(
+            &dir.join(INBOX_FILE),
+            include_str!("../resources/onboarding/inbox.md"),
+        )?;
+        crate::notes::write_atomic(
+            &dir.join(TASKS_FILE),
+            include_str!("../resources/onboarding/tasks.md"),
+        )?;
+        crate::notes::write_atomic(
+            &dir.join("FloatNote 入门.md"),
+            include_str!("../resources/onboarding/guide.md"),
+        )?;
+        Ok(())
+    })();
+    if let Err(error) = result {
+        // This directory was just created by us; never clean up an existing project.
+        let _ = std::fs::remove_dir_all(dir);
+        return Err(error);
+    }
+    Ok(entry)
+}
+
 /// Turn a user-supplied project name into a safe, cross-platform folder name.
 /// Path separators and characters illegal on Windows become `-`; surrounding
 /// whitespace and dots are trimmed; an empty result falls back to "未命名".
@@ -232,6 +259,34 @@ pub fn delete_project_with(dir: &Path, trash: &impl crate::trash::Trash) -> std:
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn starter_project_has_one_guide_and_does_not_overwrite_existing_content() {
+        let root = crate::testutil::tempdir();
+        let existing = create_project(root.path(), "入门").unwrap();
+        let original = Path::new(&existing.path).join(INBOX_FILE);
+        std::fs::write(&original, "我的内容").unwrap();
+        let starter = create_starter_project(root.path(), "入门").unwrap();
+        let dir = Path::new(&starter.path);
+        assert_ne!(starter.path, existing.path);
+        assert_eq!(std::fs::read_to_string(original).unwrap(), "我的内容");
+        assert_eq!(list_pieces(dir).unwrap().len(), 1);
+        assert!(std::fs::read_to_string(dir.join(INBOX_FILE))
+            .unwrap()
+            .contains("https://floatnote.ink/"));
+        let tasks = std::fs::read_to_string(dir.join(TASKS_FILE)).unwrap();
+        assert_eq!(
+            tasks
+                .lines()
+                .filter(|line| line.starts_with("- [ ]"))
+                .count(),
+            3
+        );
+        assert!(tasks.contains("迭代写作的第二个版本"));
+        let guide = std::fs::read_to_string(dir.join("FloatNote 入门.md")).unwrap();
+        assert!(guide.contains("_tasks.md"));
+        assert!(guide.contains("记录当前版本"));
+    }
 
     #[test]
     fn lists_pieces_excluding_underscore_files_newest_first() {

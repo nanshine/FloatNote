@@ -15,10 +15,10 @@ import {
 } from "../platform/onboarding";
 import { SPLIT_PREFS, canSplit } from "./split";
 import { confirmDialog } from "./notes-state";
-import { escapeHtml } from "../shared/escape";
+import { formatComboForDisplay } from "../shared/shortcuts";
 import { listen } from "@tauri-apps/api/event";
 
-const ORDER: OnboardingStep[] = ["welcome", "capture", "writing", "tasks", "split", "assistant"];
+const ORDER: OnboardingStep[] = ["welcome", "capture", "writing", "tasks", "split", "assistant", "access"];
 
 export interface CoachPlacement { left: number; top: number; side: "top" | "bottom" | "left" | "right" }
 
@@ -54,7 +54,9 @@ interface OnboardingDeps {
   setTasksOpen: (open: boolean) => void;
   tasksOpen: () => boolean;
   openAssistant: () => Promise<void>;
-  captureShortcut: () => string;
+  captureShortcut: () => Promise<string>;
+  toggleShortcut: () => Promise<string>;
+  openSettings: () => Promise<void>;
 }
 
 export interface OnboardingController {
@@ -136,7 +138,7 @@ export function createOnboardingController(deps: OnboardingDeps): OnboardingCont
     if (preview.startsWith("tasks")) return "tasks";
     if (preview.startsWith("split")) return "split";
     if (preview.startsWith("assistant")) return "assistant";
-    return preview === "welcome" || preview === "writing" ? preview : null;
+    return preview === "welcome" || preview === "writing" || preview === "access" ? preview : null;
   }
 
   function resolvedStep(): OnboardingStep | null { return previewStep() ?? state?.step ?? null; }
@@ -147,8 +149,8 @@ export function createOnboardingController(deps: OnboardingDeps): OnboardingCont
     close.title = "关闭引导";
     const progress = document.createElement("span");
     progress.className = "onboarding-progress";
-    const route = deps.hasProject() || preview ? ORDER.slice(1) : ["writing", "assistant"];
-    const labels: Record<string, string> = { capture: "采集", writing: "写作", tasks: "行动清单", split: "双栏", assistant: "苏格拉底 AI" };
+    const route = deps.hasProject() || preview ? ORDER.slice(1) : ["writing", "assistant", "access"];
+    const labels: Record<string, string> = { capture: "采集", writing: "写作", tasks: "行动清单", split: "双栏", assistant: "苏格拉底 AI", access: "打开与收起" };
     progress.textContent = `${route.indexOf(step) + 1} / ${route.length} · ${labels[step]}`;
     card.prepend(progress, close);
   }
@@ -156,7 +158,7 @@ export function createOnboardingController(deps: OnboardingDeps): OnboardingCont
   function navigation(step: OnboardingStep, label: string, action: () => void, skip?: () => void): HTMLElement {
     const actions = document.createElement("div");
     actions.className = "onboarding-actions";
-    const previous = deps.hasProject() ? ORDER[ORDER.indexOf(step) - 1] : step === "assistant" ? "writing" : null;
+    const previous = deps.hasProject() ? ORDER[ORDER.indexOf(step) - 1] : step === "access" ? "assistant" : step === "assistant" ? "writing" : null;
     if (previous && previous !== "welcome") actions.append(button("上一步", "onboarding-back", () => void go(previous)));
     const forward = document.createElement("div");
     forward.className = "onboarding-forward";
@@ -173,7 +175,7 @@ export function createOnboardingController(deps: OnboardingDeps): OnboardingCont
     const needsPermission = preview === "capture-permission" || (!preview && permission === "required");
     card.innerHTML = succeeded
       ? `<h2>采集到第一条材料</h2><p>采集你产生共鸣的任何内容，就这样放着，整理的工作以后来办。</p>`
-      : `<h2>收集一段有用的文字</h2><p>在浏览器或 PDF 中划选文字。<br>点击旁边的「采集」，存入当前项目。</p><p class="onboarding-shortcut">也可以按 <kbd>${escapeHtml(deps.captureShortcut())}</kbd> 快速采集。</p>${needsPermission ? `<p class="onboarding-permission">先开启辅助功能权限，让 FloatNote 读取选中文字并显示采集按钮。</p>` : ""}`;
+      : `<h2>收集一段有用的文字</h2><p>在浏览器或 PDF 中划选文字。<br>点击旁边的「采集」，存入当前项目。</p><p class="onboarding-shortcut">也可以按 <kbd data-capture-shortcut>…</kbd> 快速采集。</p>${needsPermission ? `<p class="onboarding-permission">先开启辅助功能权限，让 FloatNote 读取选中文字并显示采集按钮。</p>` : ""}`;
     decorate(card, "capture");
     if (needsPermission && !succeeded) card.append(button("打开系统设置", "fn-btn fn-btn--secondary", () => void requestCapturePermission().then((value) => { permission = value; void render(); }).catch(showError)));
     card.append(navigation("capture", succeeded ? "下一步" : "跳过这一步", () => void enterWriting()));
@@ -184,7 +186,7 @@ export function createOnboardingController(deps: OnboardingDeps): OnboardingCont
     return card;
   }
 
-  const coachContent: Record<Exclude<OnboardingStep, "welcome" | "capture">, { selector: string; title: string; body: string; action: string }> = {
+  const coachContent: Record<Exclude<OnboardingStep, "welcome" | "capture" | "access">, { selector: string; title: string; body: string; action: string }> = {
     writing: { selector: '.seg-btn[data-view="piece"]', title: "从材料走向观点", body: "采集区保存材料，写作区形成感悟、判断和观点。", action: "下一步" },
     tasks: { selector: "#tasks-toggle", title: "记录接下来的行动", body: "把要查、要读、要写的事，记在项目的行动清单里。", action: "打开行动清单" },
     split: { selector: '.seg-btn[data-view="split"]', title: "让材料和观点并排", body: "左边看材料，右边写观点。窗口较窄时会自动加宽。", action: "进入双栏" },
@@ -218,10 +220,10 @@ export function createOnboardingController(deps: OnboardingDeps): OnboardingCont
     card.innerHTML = `<h2>${done ? result.title : spec.title}</h2><p>${done ? result.body : spec.body}</p>`;
     decorate(card, step);
     const next = () => {
-      if (step === "assistant") void persist({ status: "completed", step: "assistant" }).then(render).catch(showError);
+      if (step === "assistant") void go("access");
       else void go(step === "writing" ? deps.hasProject() ? "tasks" : "assistant" : step === "tasks" ? "split" : "assistant");
     };
-    card.append(navigation(step, done ? step === "assistant" ? "完成引导" : "下一步" : spec.action, () => {
+    card.append(navigation(step, done ? "下一步" : spec.action, () => {
       if (done) next();
       else if (step === "tasks") { deps.setTasksOpen(true); void render(); }
       else if (step === "split") void enterSplit();
@@ -248,7 +250,6 @@ export function createOnboardingController(deps: OnboardingDeps): OnboardingCont
     try {
       await deps.createPiece();
       await go("writing");
-      deps.focusPieceTitle();
     } catch (error) { showError(error); }
     finally { enteringWriting = false; }
   }
@@ -256,6 +257,14 @@ export function createOnboardingController(deps: OnboardingDeps): OnboardingCont
   function showError(error: unknown): void {
     const message = root.querySelector<HTMLElement>(".onboarding-error");
     if (message) message.textContent = error instanceof Error ? error.message : String(error);
+  }
+
+  async function updateShortcut(card: HTMLElement, selector: string, read: () => Promise<string>): Promise<void> {
+    const label = card.querySelector(selector);
+    if (!label) return;
+    try {
+      label.textContent = formatComboForDisplay(await read());
+    } catch (error) { if (root.contains(card)) showError(error); }
   }
 
   async function enterSplit(): Promise<void> {
@@ -316,9 +325,27 @@ export function createOnboardingController(deps: OnboardingDeps): OnboardingCont
       }
       return;
     }
+    if (step === "access") {
+      const card = document.createElement("section");
+      card.className = "onboarding-content-card";
+      card.innerHTML = `<h2>随时 打开/收起 FloatNote</h2><p>按 <kbd data-toggle-shortcut>…</kbd> 打开/收起窗口。</p><p>点击托盘图标也可以显示或隐藏窗口；右键点击托盘图标，选择「设置…」调整快捷键、外观和 AI 服务。</p>`;
+      decorate(card, "access");
+      const actions = navigation("access", "开始使用", () => void persist({ status: "completed", step: "access" }).then(render).catch(showError));
+      actions.querySelector(".onboarding-forward")!.append(button("打开设置", "fn-btn fn-btn--secondary", () => void deps.openSettings().catch(showError)));
+      card.append(actions);
+      const error = document.createElement("p");
+      error.className = "onboarding-error";
+      error.setAttribute("role", "alert");
+      card.append(error);
+      root.append(card);
+      await updateShortcut(card, "[data-toggle-shortcut]", deps.toggleShortcut);
+      return;
+    }
     if (step === "capture") {
       deps.selectView("inbox");
-      root.append(captureCard());
+      const card = captureCard();
+      root.append(card);
+      await updateShortcut(card, "[data-capture-shortcut]", deps.captureShortcut);
       return;
     }
     if (step === "tasks") {
@@ -334,6 +361,7 @@ export function createOnboardingController(deps: OnboardingDeps): OnboardingCont
     resizeFrame = requestAnimationFrame(() => void render());
   });
   addEventListener("focus", () => {
+    if (active() && resolvedStep() === "access") void render();
     if (active() && resolvedStep() === "capture" && !preview) {
       void getCapturePermissionState().then((value) => { permission = value; void render(); });
     }
@@ -356,7 +384,7 @@ export function createOnboardingController(deps: OnboardingDeps): OnboardingCont
       if ((state.status === "not_started" || state.status === "in_progress") && state.step === "welcome" && deps.hasProject()) {
         await go("capture");
       } else if (active() && deps.hasDocument?.()) {
-        await go(state.step === "assistant" ? "assistant" : "writing");
+        await go(state.step === "access" ? "access" : state.step === "assistant" ? "assistant" : "writing");
       } else {
         await render();
       }

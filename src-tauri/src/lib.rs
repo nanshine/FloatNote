@@ -249,6 +249,7 @@ pub fn run() {
             commands::get_config,
             commands::set_config,
             commands::get_onboarding_state,
+            commands::open_settings,
             commands::set_onboarding_state,
             commands::get_runtime_profile,
             commands::get_onboarding_preview,

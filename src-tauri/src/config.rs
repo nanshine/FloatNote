@@ -40,6 +40,7 @@ pub enum OnboardingStep {
     Tasks,
     Split,
     Assistant,
+    Access,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
@@ -283,6 +284,7 @@ pub struct Config {
     pub theme: Theme,
     /// Persisted independently so a stale settings window cannot overwrite progress.
     pub onboarding: OnboardingState,
+    pub starter_project_created: bool,
     /// 助手是否展开显示（折叠则隐藏）。助手始终活在笔记窗内，按窗宽自动 inline/floating。
     pub assistant_open: bool,
     /// Assistant process projection. Full session history is independent of this display setting.
@@ -299,6 +301,12 @@ pub struct Config {
     pub disabled_skills: Vec<String>,
 }
 
+impl Config {
+    pub fn should_create_starter_project(&self) -> bool {
+        !self.starter_project_created && self.onboarding.status == OnboardingStatus::NotStarted
+    }
+}
+
 impl Default for Config {
     fn default() -> Self {
         let modifier = primary_shortcut_modifier();
@@ -312,6 +320,7 @@ impl Default for Config {
             launch_at_login: false,
             theme: Theme::System,
             onboarding: OnboardingState::default(),
+            starter_project_created: false,
             assistant_open: false,
             assistant_output_mode: AssistantOutputMode::Compact,
             recent_projects: Vec::new(),
@@ -463,6 +472,23 @@ fn replace_file(source: &Path, destination: &Path) -> std::io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn tutorial_is_only_created_once_for_a_new_user() {
+        let mut config = Config::default();
+        assert!(config.should_create_starter_project());
+        config.starter_project_created = true;
+        assert!(!config.should_create_starter_project());
+        let encoded = serde_json::to_string(&config).unwrap();
+        let restored: Config = serde_json::from_str(&encoded).unwrap();
+        assert!(!restored.should_create_starter_project());
+        config.starter_project_created = false;
+        config.onboarding = OnboardingState::migrated_existing_user();
+        assert!(!config.should_create_starter_project());
+        config.onboarding.status = OnboardingStatus::InProgress;
+        config.onboarding.step = OnboardingStep::Welcome;
+        assert!(!config.should_create_starter_project());
+    }
 
     #[test]
     fn empty_json_yields_defaults() {

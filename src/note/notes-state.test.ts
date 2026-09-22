@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
+  createProject,
   inboxPath,
   inboxEntry,
   scheduleSave,
@@ -24,6 +25,16 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
 const mockedInvoke = invoke as unknown as ReturnType<typeof vi.fn>;
 const okWrite = (mtime: number | null = null) => ({ conflict: false, mtime });
+
+describe("createProject", () => {
+  it("lets the backend choose the saved or per-user folder without a directory picker", async () => {
+    mockedInvoke.mockReset();
+    const project = { name: "未命名项目", path: "/users/alice/Documents/FloatNote/未命名项目" };
+    mockedInvoke.mockResolvedValue(project);
+    expect(await createProject(null, project.name)).toEqual(project);
+    expect(mockedInvoke).toHaveBeenCalledWith("create_project", { root: null, name: project.name });
+  });
+});
 
 describe("inboxPath", () => {
   it("joins a POSIX project folder with _inbox.md", () => {
