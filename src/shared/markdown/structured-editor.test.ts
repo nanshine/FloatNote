@@ -2,7 +2,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn().mockResolvedValue(undefined) }));
-import { createStructuredMarkdownEditor, type StructuredMarkdownEditor } from "./structured-editor";
+import {
+  createStructuredMarkdownEditor,
+  markdownLinkOpenHint,
+  shouldOpenMarkdownLink,
+  type StructuredMarkdownEditor,
+} from "./structured-editor";
 import { undo, redo } from "@milkdown/kit/prose/history";
 
 if (!Range.prototype.getClientRects) {
@@ -337,7 +342,7 @@ describe("structured markdown editor", () => {
     });
     const initialSource = parent.querySelector<HTMLAnchorElement>(".fn-quote-card__source a")!;
     initialSource.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 }));
-    initialSource.click();
+    initialSource.dispatchEvent(new MouseEvent("click", { bubbles: true, ctrlKey: true }));
     editor.withView((view) => expect(view.state.selection.constructor.name).not.toBe("NodeSelection"));
     parent.querySelector<HTMLElement>(".fn-quote-card__header")!
       .dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 }));
@@ -347,7 +352,7 @@ describe("structured markdown editor", () => {
     expect(sourceEditor.hidden).toBe(true);
     const anchor = parent.querySelector<HTMLAnchorElement>(".fn-quote-card__source a")!;
     anchor.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 }));
-    anchor.click();
+    anchor.dispatchEvent(new MouseEvent("click", { bubbles: true, ctrlKey: true }));
     expect(invoke).toHaveBeenCalledWith("open_url", { url: "https://example.com" });
     expect(sourceEditor.hidden).toBe(true);
     const edit = parent.querySelector<HTMLButtonElement>('[aria-label="编辑引用来源"]')!;
@@ -365,7 +370,8 @@ describe("structured markdown editor", () => {
     label.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
     expect(editor.getMarkdown()).toContain("[Docs](https://docs.example.com)");
     expect(sourceEditor.hidden).toBe(true);
-    parent.querySelector<HTMLAnchorElement>(".fn-quote-card__source a")!.click();
+    parent.querySelector<HTMLAnchorElement>(".fn-quote-card__source a")!
+      .dispatchEvent(new MouseEvent("click", { bubbles: true, ctrlKey: true }));
     expect(invoke).toHaveBeenLastCalledWith("open_url", { url: "https://docs.example.com" });
     expect(editor.getMarkdown()).toContain("captured text");
     expect(parent.querySelector(".fn-quote-card__content")?.textContent).toContain("captured text");
@@ -375,6 +381,48 @@ describe("structured markdown editor", () => {
     expect(editor.getMarkdown()).toContain("> [!quote]");
     expect(editor.getMarkdown()).not.toContain("docs.example.com");
     expect(editor.getMarkdown()).toContain("captured text");
+  });
+
+  it("opens ordinary Markdown links only with the platform modifier", async () => {
+    vi.mocked(invoke).mockClear();
+    const parent = document.createElement("div");
+    document.body.append(parent);
+    editor = await createStructuredMarkdownEditor({
+      parent,
+      context: { kind: "piece" },
+      markdown: "Read [the docs](https://docs.example.com).",
+    });
+
+    const anchor = parent.querySelector<HTMLAnchorElement>('a[href="https://docs.example.com"]')!;
+    anchor.click();
+    expect(invoke).not.toHaveBeenCalledWith("open_url", { url: "https://docs.example.com" });
+
+    anchor.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+    expect(document.querySelector('[role="tooltip"]')?.textContent).toContain("https://docs.example.com · 按住 Ctrl 并点击以打开链接");
+    expect(anchor.classList.contains("fn-markdown-link-ready")).toBe(false);
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Control", ctrlKey: true }));
+    expect(anchor.classList.contains("fn-markdown-link-ready")).toBe(true);
+    window.dispatchEvent(new KeyboardEvent("keyup", { key: "Control" }));
+    expect(anchor.classList.contains("fn-markdown-link-ready")).toBe(false);
+    window.dispatchEvent(new Event("blur"));
+    expect(document.querySelector('[role="tooltip"]')).toBeNull();
+    anchor.dispatchEvent(new MouseEvent("mouseover", { bubbles: true, ctrlKey: true }));
+    expect(anchor.classList.contains("fn-markdown-link-ready")).toBe(true);
+    editor.contentDOM.dispatchEvent(new MouseEvent("mouseleave"));
+    expect(document.querySelector('[role="tooltip"]')).toBeNull();
+    expect(anchor.classList.contains("fn-markdown-link-ready")).toBe(false);
+    anchor.dispatchEvent(new MouseEvent("click", { bubbles: true, ctrlKey: true }));
+
+    expect(invoke).toHaveBeenCalledWith("open_url", { url: "https://docs.example.com" });
+  });
+
+  it("uses Command on macOS and Ctrl on other platforms", () => {
+    expect(markdownLinkOpenHint("MacIntel")).toContain("⌘");
+    expect(shouldOpenMarkdownLink({ metaKey: true, ctrlKey: false }, "MacIntel")).toBe(true);
+    expect(shouldOpenMarkdownLink({ metaKey: false, ctrlKey: true }, "MacIntel")).toBe(false);
+    expect(markdownLinkOpenHint("Win32")).toContain("Ctrl");
+    expect(shouldOpenMarkdownLink({ metaKey: false, ctrlKey: true }, "Win32")).toBe(true);
+    expect(shouldOpenMarkdownLink({ metaKey: true, ctrlKey: false }, "Win32")).toBe(false);
   });
 
   it.each([

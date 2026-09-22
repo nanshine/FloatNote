@@ -17,7 +17,6 @@ import { $ctx, $inputRule, $markSchema, $nodeSchema, $prose, $remark, $view } fr
 import { isSafeUrl } from "./safe-url";
 import type { Root as MdastRoot } from "mdast";
 import { floatnoteCodeHighlight, floatnoteCodeLanguages } from "./code-languages";
-import { wireOpenUrlLink } from "../../platform/open-url";
 
 export const floatnoteRemarkMath = $remark("floatnoteRemarkMath", () => remarkMath);
 
@@ -236,6 +235,7 @@ export const floatnoteLinkSchema = linkSchema.extendSchema((previous) => (ctx) =
   const base = previous(ctx);
   return {
     ...base,
+    inclusive: false,
     toDOM: (mark) => ["a", {
       href: safeMarkdownUrl(String(mark.attrs.href ?? "")),
       title: mark.attrs.title || null,
@@ -522,8 +522,7 @@ export const quoteCardView = $view(quoteCardSchema.node, (): NodeViewConstructor
       if (href) {
         const anchor = document.createElement("a");
         anchor.textContent = label || href;
-        anchor.title = href;
-        wireOpenUrlLink(anchor, href);
+        anchor.href = href;
         source.append(anchor);
       } else {
         source.textContent = label || "引用";

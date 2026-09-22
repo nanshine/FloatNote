@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 const REVIEW_URL = "http://127.0.0.1:1422/tests/review/browser/note-surfaces.html";
 
@@ -35,6 +37,37 @@ describe("note editor surface browser review", () => {
   before(async () => {
     await browser.url(REVIEW_URL);
     await browser.setWindowSize(900, 600);
+    await browser.waitUntil(() => browser.execute(() => document.body.dataset.reviewReady === "true"));
+  });
+
+  it("types links, edits their targets with the keyboard and restores focus", async () => {
+    await browser.url(REVIEW_URL);
+    await browser.waitUntil(() => browser.execute(() => document.body.dataset.reviewReady === "true"));
+    const content = await $("#piece-host .editor");
+    await content.click();
+    await browser.keys("[FloatNote](https://example.com)");
+    const anchor = await $("#piece-host .editor a");
+    await anchor.waitForExist();
+    assert.equal(await anchor.getText(), "FloatNote");
+    assert.equal(await anchor.getAttribute("href"), "https://example.com");
+    const modifier = await browser.execute(() => /Mac/i.test(navigator.platform) ? "\uE03D" : "\uE009");
+    await browser.keys([modifier, "k"]);
+    await browser.keys("\uE000");
+    const dialog = await $(".fn-link-dialog:not([hidden])");
+    await dialog.waitForDisplayed();
+    assert.equal(await dialog.$('input[name="label"]').getValue(), "FloatNote");
+    await dialog.$('input[name="url"]').setValue("https://example.org/docs");
+    await browser.saveScreenshot(join(tmpdir(), "floatnote-link-editor.png"));
+    assert.equal(await dialog.$$("button").length, 0);
+    assert.equal(await anchor.getAttribute("href"), "https://example.org/docs");
+    await dialog.$(".fn-link-dialog__backdrop").click({ x: -400, y: -200 });
+    await dialog.waitForDisplayed({ reverse: true });
+    assert.equal(await anchor.getAttribute("href"), "https://example.org/docs");
+    await browser.keys(" 后续正文");
+    assert.equal(await anchor.getText(), "FloatNote");
+    assert.equal(await content.getText(), "FloatNote 后续正文");
+    // Leave the shared fixture empty for the existing surface checks.
+    await browser.url(REVIEW_URL);
     await browser.waitUntil(() => browser.execute(() => document.body.dataset.reviewReady === "true"));
   });
 

@@ -19,6 +19,10 @@ import { Decoration, DecorationSet, type EditorView } from "@milkdown/kit/prose/
 import { $prose } from "@milkdown/kit/utils";
 import { floatnoteEditorRuntime, floatnoteMarkdownPlugins, handleListParentEnter } from "./milkdown-plugins";
 import { guardNoteHorizontalScroll } from "./note-scroll";
+import { openUrl } from "../../platform/open-url";
+import { isSafeUrl } from "./safe-url";
+import { bareLinkInputRule, linkPastePlugin, markdownLinkInputRule, undoLinkInput } from "./link-input";
+import { createLinkEditor } from "./link-editor";
 
 export type MarkdownDocumentKind = "inbox" | "piece" | "document" | "composer";
 
@@ -60,6 +64,14 @@ export interface StructuredMarkdownEditor {
   /** Editor-integration escape hatch. Feature UI must expose domain commands instead of leaking this view further. */
   withView<T>(run: (view: EditorView) => T): T;
   destroy(): Promise<void>;
+}
+
+export function markdownLinkOpenHint(platform = navigator.platform): string {
+  return /Mac/i.test(platform) ? "按住 ⌘ 并点击以打开链接" : "按住 Ctrl 并点击以打开链接";
+}
+
+export function shouldOpenMarkdownLink(event: Pick<MouseEvent, "metaKey" | "ctrlKey">, platform = navigator.platform): boolean {
+  return /Mac/i.test(platform) ? event.metaKey : event.ctrlKey;
 }
 
 function usesNoteSurface(kind: MarkdownDocumentKind): boolean {
@@ -133,11 +145,13 @@ export async function createStructuredMarkdownEditor(
     .use(history);
   if (options.placeholder) milkdown.use(createPlaceholderPlugin(options.placeholder));
   milkdown.use(floatnoteMarkdownPlugins);
+  milkdown.use([markdownLinkInputRule, bareLinkInputRule, linkPastePlugin]);
 
   await milkdown.create();
   const view = milkdown.ctx.get(editorViewCtx);
   const parser = milkdown.ctx.get(parserCtx);
   const serializer = milkdown.ctx.get(serializerCtx);
+  const linkEditor = createLinkEditor(view);
   const currentRoot = () => milkdown.ctx.get(rootDOMCtx);
   const noteScroll = noteSurface ? guardNoteHorizontalScroll(view.dom) : undefined;
   if (options.placeholder) {
@@ -154,10 +168,68 @@ export async function createStructuredMarkdownEditor(
       if (transaction.docChanged && !suppressChange) options.onChange?.(normalizeFloatNoteMarkdown(serializer(nextState.doc)));
       if (!nextState.selection.eq(previousSelection)) options.onSelectionChange?.(nextState.selection);
     },
-    handleKeyDown: (currentView, event) => options.handleKeyDown?.(event, api)
+    handleKeyDown: (currentView, event) => linkEditor.handleKeyDown(event)
+      || undoLinkInput(currentView, event)
+      || options.handleKeyDown?.(event, api)
       || handleListParentEnter(currentView, event),
   });
   view.dom.addEventListener("focusin", () => options.onFocus?.());
+  const openMarkdownLink = (event: MouseEvent) => {
+    const target = event.target instanceof Element
+      ? event.target.closest<HTMLAnchorElement>("a[href]")
+      : null;
+    if (!target || !view.dom.contains(target)) return;
+    const url = target.getAttribute("href") ?? "";
+    event.preventDefault();
+    if (!isSafeUrl(url) || !/^(https?:\/\/|mailto:)/i.test(url)) return;
+    if (!shouldOpenMarkdownLink(event)) return;
+    event.stopPropagation();
+    void openUrl(url).catch(() => undefined);
+  };
+  const linkHint = document.createElement("div");
+  linkHint.className = "fn-markdown-link-hint";
+  linkHint.setAttribute("role", "tooltip");
+  linkHint.textContent = markdownLinkOpenHint();
+  let hoveredLink: HTMLAnchorElement | null = null;
+  const hideLinkHint = () => {
+    hoveredLink?.classList.remove("fn-markdown-link-ready");
+    hoveredLink = null;
+    linkHint.remove();
+  };
+  const updateLinkModifier = (event: Pick<MouseEvent, "metaKey" | "ctrlKey">) => {
+    hoveredLink?.classList.toggle("fn-markdown-link-ready", shouldOpenMarkdownLink(event));
+  };
+  const describeMarkdownLink = (event: MouseEvent) => {
+    const target = event.target instanceof Element
+      ? event.target.closest<HTMLAnchorElement>("a[href]")
+      : null;
+    const url = target?.getAttribute("href") ?? "";
+    if (!target || !view.dom.contains(target)
+      || !isSafeUrl(url) || !/^(https?:\/\/|mailto:)/i.test(url)) {
+      hideLinkHint();
+      return;
+    }
+    if (hoveredLink !== target) {
+      hideLinkHint();
+      hoveredLink = target;
+    }
+    updateLinkModifier(event);
+    linkHint.textContent = `${url} · ${markdownLinkOpenHint()} · ${/Mac/i.test(navigator.platform) ? "⌘K" : "Ctrl+K"} 编辑`;
+    document.body.append(linkHint);
+    const rect = target.getBoundingClientRect();
+    const hintRect = linkHint.getBoundingClientRect();
+    linkHint.style.left = `${Math.max(8, Math.min(rect.left, window.innerWidth - hintRect.width - 8))}px`;
+    linkHint.style.top = `${Math.max(8, rect.bottom + hintRect.height + 8 > window.innerHeight
+      ? rect.top - hintRect.height - 6 : rect.bottom + 6)}px`;
+  };
+  view.dom.addEventListener("click", openMarkdownLink);
+  view.dom.addEventListener("mouseover", describeMarkdownLink);
+  view.dom.addEventListener("mousemove", describeMarkdownLink);
+  view.dom.addEventListener("mouseleave", hideLinkHint);
+  window.addEventListener("keydown", updateLinkModifier, true);
+  window.addEventListener("keyup", updateLinkModifier, true);
+  window.addEventListener("blur", hideLinkHint);
+  window.addEventListener("scroll", hideLinkHint, true);
 
   // The visual note surface can be taller than its document. When a click lands
   // on host whitespace instead of the contenteditable node, focus the same
@@ -180,6 +252,7 @@ export async function createStructuredMarkdownEditor(
     contentDOM: view.dom,
     context,
     load(markdown, nextContext) {
+      linkEditor.close();
       Object.assign(context, nextContext ?? {});
       const doc = parser(markdown);
       if (!doc) return;
@@ -195,6 +268,7 @@ export async function createStructuredMarkdownEditor(
       }
     },
     replace(markdown, replaceOptions = {}) {
+      linkEditor.close();
       suppressChange = true;
       try {
         replaceDocument(view, markdown, parser, replaceOptions.addToHistory ?? true);
@@ -205,6 +279,7 @@ export async function createStructuredMarkdownEditor(
     getMarkdown: () => normalizeFloatNoteMarkdown(serializer(view.state.doc)),
     checkpoint: () => ({ state: view.state }),
     restore(checkpoint) {
+      linkEditor.close();
       suppressChange = true;
       try {
         view.updateState(checkpoint.state);
@@ -213,6 +288,7 @@ export async function createStructuredMarkdownEditor(
       }
     },
     setReadOnly(value) {
+      if (value) linkEditor.close();
       readOnly = value;
       view.setProps({ editable: () => !readOnly });
       currentRoot().classList.toggle("fn-structured-editor--readonly", readOnly);
@@ -240,7 +316,17 @@ export async function createStructuredMarkdownEditor(
     },
     withView: (run) => run(view),
     async destroy() {
+      linkEditor.destroy();
       noteScroll?.destroy();
+      view.dom.removeEventListener("click", openMarkdownLink);
+      view.dom.removeEventListener("mouseover", describeMarkdownLink);
+      view.dom.removeEventListener("mousemove", describeMarkdownLink);
+      view.dom.removeEventListener("mouseleave", hideLinkHint);
+      window.removeEventListener("keydown", updateLinkModifier, true);
+      window.removeEventListener("keyup", updateLinkModifier, true);
+      window.removeEventListener("blur", hideLinkHint);
+      window.removeEventListener("scroll", hideLinkHint, true);
+      hideLinkHint();
       options.parent.removeEventListener("pointerdown", focusFromHostWhitespace);
       await milkdown.destroy();
     },
