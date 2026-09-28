@@ -110,13 +110,22 @@ describe("note editor surface browser review", () => {
     }
   });
 
-  it("uses identical typography, spacing and caret-only focus treatment", async () => {
+  it("uses shared typography and focus treatment with a compact title-to-body inset", async () => {
     const inbox = await surfaceStyle("#inbox-host");
     const piece = await surfaceStyle("#piece-host");
     assert.deepEqual(
-      { ...inbox, height: 0 },
-      { ...piece, height: 0 },
+      { ...inbox, height: 0, padding: "" },
+      { ...piece, height: 0, padding: "" },
     );
+    assert.equal(inbox.padding.split(" ")[0], "24px");
+    assert.equal(piece.padding.split(" ")[0], "8px");
+    const titleGap = await browser.execute(() => {
+      const title = document.querySelector(".piece-title-input")!;
+      const paragraph = document.querySelector("#piece-host .editor > p")!;
+      return paragraph.getBoundingClientRect().top - title.getBoundingClientRect().bottom;
+    });
+    assert.ok(titleGap >= 10 && titleGap <= 16, `title-to-body gap is ${titleGap}px`);
+    await browser.saveScreenshot(join(tmpdir(), "floatnote-issue-4-spacing.png"));
     assert.equal(inbox.outlineStyle, "none");
     assert.equal(inbox.boxShadow, "none");
   });
@@ -289,6 +298,9 @@ describe("note editor surface browser review", () => {
     await browser.setWindowSize(700, 600);
     await browser.waitUntil(() => browser.execute(() => document.body.dataset.reviewReady === "true"));
     await $("#inbox-host .fn-structured-image__image").click();
+    for (const selector of ["#inbox-host", "#piece-host"]) {
+      assert.equal((await surfaceStyle(selector)).padding.split(" ")[0], "52px");
+    }
     const bounds = await browser.execute(() => {
       const host = document.querySelector<HTMLElement>("#inbox-host");
       const left = host?.querySelector<HTMLElement>(".fn-structured-image__resize--w");

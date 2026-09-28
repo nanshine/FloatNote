@@ -98,6 +98,8 @@ DOM 输出前执行安全策略。
 
 ## 共享组件（`src/shared/ui/`，`fn-` 前缀）
 
+写作区文件名标题后的正文顶部留白使用 `--space-3`（8px），采集区保留 24px 顶部留白；正文排版仍共享同一编辑器表面，首行图片统一保留 52px 工具栏安全空间。
+
 | 组件 | 文件 | 类名 | 合并的旧重复 |
 |---|---|---|---|
 | Button | `button.ts` | `.fn-btn[--primary/--secondary/--ghost/--danger/--sm/--icon]`、`.is-on/:disabled` | `.icon-btn`、`.popup-btn*`、`.settings-btn-*`、`.history-icon-btn`、`.empty-state-btn` |
