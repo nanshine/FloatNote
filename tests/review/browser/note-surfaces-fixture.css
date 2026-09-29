@@ -38,11 +38,3 @@ body {
   flex: 1 1 auto;
   flex-direction: column;
 }
-
-.surface-title {
-  flex: none;
-  padding: 12px 0 2px;
-  color: var(--color-text);
-  font-size: calc(var(--editor-font, 15px) + 11px);
-  font-weight: 600;
-}

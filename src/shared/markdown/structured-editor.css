@@ -25,10 +25,16 @@
   padding: var(--fn-editor-top-space) 0 var(--fn-editor-bottom-space);
 }
 
+/* A filename title already separates the body from the writing toolbar. */
+#piece-doc-header + .note-editor-host .fn-note-structured-editor > .editor {
+  --fn-editor-top-space: var(--space-3);
+}
+
 /* An image toolbar opens above the selected image. When an image is on the
  * first line, reserve its full height inside the scrollport instead of
  * clipping the controls against the top edge. */
-.fn-note-structured-editor > .editor:has(> :first-child > .fn-structured-image:first-child) {
+.fn-note-structured-editor > .editor:has(> :first-child > .fn-structured-image:first-child),
+#piece-doc-header + .note-editor-host .fn-note-structured-editor > .editor:has(> :first-child > .fn-structured-image:first-child) {
   --fn-editor-top-space: 52px;
 }
 

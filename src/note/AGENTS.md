@@ -25,6 +25,9 @@ load/save/interoperability boundary, while ProseMirror state is authoritative du
   `.fn-note-structured-editor` surface from `structured-editor.ts`; Inbox code may
   add annotation marks and projections but must not fork body typography, block
   rendering, focus chrome, or empty-space hit behavior.
+  The body following `#piece-doc-header` uses an 8px top inset because the
+  filename title already supplies separation; first-position images still
+  reserve the shared 52px toolbar space.
 - `tasks-panel.ts` — `_tasks.md` checklist panel (render, mutate, drag-reorder,
   filter). Imports task logic from `./tasks` (migrated from shared).
 - Annotation definitions and the canonical palette come directly from
