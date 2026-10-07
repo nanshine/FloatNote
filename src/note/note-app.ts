@@ -502,15 +502,17 @@ function publishInboxActive() {
 
 
 function applyView() {
-  const split = layoutController?.isSplit() ?? false;
   // 文档模式：单一编辑器，无滑拨杆 / 无采集面 / 无行动面板（CSS 经 .doc-session.mode 隐藏）。
   app.classList.toggle("doc-mode", session.mode === "document");
   if (session.mode === "document") {
+    // 清除分屏请求并重算单栏几何，避免沿用项目双栏或在窗口变宽后恢复双栏。
+    layoutController?.setSplit(false);
     app.classList.add("show-piece");
     app.classList.remove("show-inbox");
     setViewSeg("piece", false);
     return;
   }
+  const split = layoutController?.isSplit() ?? false;
   // 双栏时采集恒在左、写作恒在右；单栏时按 session.surface 选一个。
   app.classList.toggle("show-piece", !split && session.surface === "piece");
   app.classList.toggle("show-inbox", split || session.surface === "inbox");
