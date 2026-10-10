@@ -1,0 +1,19 @@
+{
+  "version": "0.3.1",
+  "notes": "## 新功能\n- 支持 Markdown 链接编辑与自动链接识别。\n- 新增离线入门项目，帮助首次使用时快速了解笔记工作流。\n\n## 修复与改进\n- 支持按 Enter 拆分嵌套列表项，修复同级列表展开边界。\n- 修复笔记区域出现横向滚动的问题。\n- 缩小写作标题与正文间距。\n\n## 安装与更新\n- Apple Silicon（M1/M2/M3/M4 及后续芯片）请选择 `.dmg` 文件名包含 `aarch64` 的版本。\n- Intel Mac 请选择 `.dmg` 文件名包含 `x86_64` 的版本。\n- Windows x86_64 用户请选择 `-setup.exe` 安装包。\n- 已安装包含更新器的版本，可以在「设置 → 通用 → 应用更新」中升级；`.sig` 为更新验签文件，无需手动打开。\n\n**完整更新记录**：https://github.com/nanshine/FloatNote/compare/v0.3.0...v0.3.1\n",
+  "pub_date": "2026-10-01T04:02:53Z",
+  "platforms": {
+    "darwin-aarch64": {
+      "url": "https://github.com/nanshine/FloatNote/releases/download/v0.3.1/FloatNote_0.3.1_aarch64.app.tar.gz",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSR2F1TGtpazdBTzNkWXROR1JNNmd1NkRJNzVEYkdTZ29VSGdiYldGSW1qK0kwdERzcndoWjV4ODhibFE0aUh4LytFSlNZMmwvUHRqZ3RNL2wzSHN4WVBnd3pFM2tFbXdrPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkwODI2MDMyCWZpbGU6RmxvYXROb3RlXzAuMy4xX2FhcmNoNjQuYXBwLnRhci5negpsS1M3eU5mWnlyc1pNL3FZUGl1eDdEeU9YYjV1dHdRbmt5RTJ5eVZybmxwQzZPaExob3piRVlSWGF2YWRpdFNTYlROR2VDOXBUUlV5ZDIyMUNvRG9DZz09Cg=="
+    },
+    "darwin-x86_64": {
+      "url": "https://github.com/nanshine/FloatNote/releases/download/v0.3.1/FloatNote_0.3.1_x86_64.app.tar.gz",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSR2F1TGtpazdBTzVueVlPQkR0b0JUZTdlV0dnbFZxMkNSZXNxSUlma0NqcnNJRWE4c2NmTDNkeHpVT3NDakE5eFZxMmcrRHk0SlQ3ZzdaV0I1VHZxd0M4OTEvaWVjM2dFPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkwODI2NzY1CWZpbGU6RmxvYXROb3RlXzAuMy4xX3g4Nl82NC5hcHAudGFyLmd6ClB3c28zZmR4WHA1bnp2K21lU2diMTViaXk5Z1Bzamo2SkswTTc2d01Pd0h2QUhxazlFRzg1YzZPZW5TL0l2V1ZBRnNQR3pjN25ObTZVOTZEeXFEb0JnPT0K"
+    },
+    "windows-x86_64": {
+      "url": "https://github.com/nanshine/FloatNote/releases/download/v0.3.1/FloatNote_0.3.1_x86_64-setup.exe",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSR2F1TGtpazdBTzRTM3pGUmdlRWljaFRvY3NFRW0rUkpOeU1tOXVSTnpTc2s2dWxMeWY3ODdBS205ZXFJNHZJMkhaOW51eDhoY3NaczV2cjVyWHAyb2hzeHlsckpsOFE4PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkwODI2MTk4CWZpbGU6RmxvYXROb3RlXzAuMy4xX3g4Nl82NC1zZXR1cC5leGUKL1dIV0krWERKOU9EWm1jSTNKWTZqM0NOR2xqbWZ3M3I0MFJ3bFJoclNYTnF1NzRCaWt2dkg2azZFVVJBdkpSNkpQaTBRcU1wTlVKVkFlLzdGMjI1QXc9PQo="
+    }
+  }
+}
