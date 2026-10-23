@@ -112,6 +112,61 @@ describe("link editing", () => {
     await create(); paste(text); expect(links()).toHaveLength(1);
   });
 
+  it.each([
+    ["# Heading", "h1"],
+    ["- first\n- second", "ul"],
+    ["1. first\n2. second", "ol"],
+    ["- [ ] pending\n- [x] done", ".fn-task-list-item"],
+    ["> quoted", "blockquote"],
+    ["| A | B |\n| --- | --- |\n| one | two |", "table"],
+    ["```js\nconst x = 1;\n```", ".fn-structured-codeblock"],
+    ["**bold** and *emphasis* and `code`", "strong"],
+  ])("parses Markdown pasted as text: %s", async (markdown, selector) => {
+    await create();
+    paste(markdown);
+    expect(editor.contentDOM.querySelector(selector)).toBeTruthy();
+    const saved = editor.getMarkdown();
+    editor.load(saved);
+    expect(editor.getMarkdown()).toBe(saved);
+  });
+
+  it("pastes a mixed document in one undo step and restores it with redo", async () => {
+    await create("before");
+    editor.setSelection(7);
+    paste("\n\n# Heading\n\n| A | B |\n| --- | --- |\n| one | two |\n\nafter");
+    expect(editor.contentDOM.querySelector("h1")).toBeTruthy();
+    expect(editor.contentDOM.querySelector("table")).toBeTruthy();
+    editor.withView((view) => undo(view.state, view.dispatch));
+    expect(editor.getMarkdown().trim()).toBe("before");
+    editor.withView((view) => redo(view.state, view.dispatch));
+    expect(editor.contentDOM.querySelector("table")).toBeTruthy();
+  });
+
+  it("keeps Markdown literal for explicit plain paste and inside code", async () => {
+    const markdown = "# Heading\n\n**bold**";
+    await create();
+    paste(markdown, true);
+    expect(editor.contentDOM.querySelector("h1, strong")).toBeNull();
+    expect(editor.contentDOM.textContent).toContain("**bold**");
+    editor.load("```\ncode\n```");
+    editor.setSelection(2);
+    paste(markdown);
+    expect(editor.contentDOM.querySelector("h1, strong")).toBeNull();
+    expect(editor.getMarkdown()).toContain("**bold**");
+  });
+
+  it("merges inline Markdown into surrounding text and prefers rich HTML", async () => {
+    await create("hello world");
+    editor.setSelection(7);
+    paste("**bold** ");
+    expect(editor.contentDOM.querySelector("p")?.textContent).toBe("hello bold world");
+    expect(editor.contentDOM.querySelector("strong")?.textContent).toBe("bold");
+    editor.load("");
+    paste("# literal heading", false, "<p># literal heading</p>");
+    expect(editor.contentDOM.querySelector("h1")).toBeNull();
+    expect(editor.contentDOM.textContent).toBe("# literal heading");
+  });
+
   it("keeps selected text and formatting when pasting a URL, with undo and redo", async () => {
     await create("**Float**Note"); editor.setSelection(1, 10);
     paste("https://example.com");

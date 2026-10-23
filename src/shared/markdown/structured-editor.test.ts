@@ -22,6 +22,35 @@ describe("structured markdown editor", () => {
     document.body.replaceChildren();
   });
 
+  it("anchors table tools to the selected table and hides them outside it", async () => {
+    const parent = document.createElement("div");
+    document.body.append(parent);
+    editor = await createStructuredMarkdownEditor({
+      parent,
+      context: { kind: "piece" },
+      markdown: "| A | B |\n| --- | --- |\n| one | two |\n\nafter",
+    });
+    const table = parent.querySelector("table")!;
+    const toolbar = parent.querySelector<HTMLElement>(".fn-table-tools")!;
+    vi.spyOn(table, "getBoundingClientRect").mockReturnValue({ left: 30, bottom: 180 } as DOMRect);
+    vi.spyOn(toolbar.parentElement!, "getBoundingClientRect").mockReturnValue({ left: 10, top: 20 } as DOMRect);
+    let cellPosition = 0;
+    editor.withView((view) => view.state.doc.descendants((node, pos) => {
+      if (!cellPosition && node.type.name === "table_cell") cellPosition = pos + 2;
+    }));
+    editor.setSelection(cellPosition);
+    expect(toolbar.hidden).toBe(false);
+    expect(toolbar.style.left).toBe("20px");
+    expect(toolbar.style.top).toBe("164px");
+    toolbar.querySelector("button")!.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+    expect(table.querySelectorAll("tr")).toHaveLength(3);
+    editor.setReadOnly(true);
+    expect(toolbar.hidden).toBe(true);
+    editor.setReadOnly(false);
+    editor.withView((view) => editor!.setSelection(view.state.doc.content.size - 1));
+    expect(toolbar.hidden).toBe(true);
+  });
+
   it("round-trips structural lists and math", async () => {
     const parent = document.createElement("div");
     document.body.append(parent);

@@ -39,9 +39,9 @@ Vite 的前端文件监听排除 `src-tauri/**`，避免 Windows 编译产物被
   采集引用卡的来源标题单击打开原文；铅笔按钮单独进入来源编辑，Enter 或保存按钮提交、Esc 取消，清除来源也需保存；标题栏空白处选中整块而不进入编辑。
   placeholder 按 ProseMirror 的空段落结构显示。普通引用可用 CommonMark `> ` 或
   `/quote `（中文 `/引用 `）输入规则创建，两者都生成原生 `blockquote` 节点。
-  `link-input.ts` 将完整手写 Markdown 链接、粘贴的单个网址或 Markdown 链接转换为 link mark；
+  `link-input.ts` 将完整手写 Markdown 链接和粘贴的单个网址转换为 link mark；普通粘贴优先保留 HTML 富文本，只有文本时使用与文档加载一致的 Markdown parser，识别表格、标题、列表、引用、代码块及行内格式；
   裸网址、`www.` 域名和邮箱在空格或回车时识别，选中文字后粘贴单个网址保留文字和格式。
-  代码与显式纯文本粘贴不做链接转换；链接末尾继续输入退出链接格式，自动转换可用
+  代码与显式纯文本粘贴保留原文，不解析 Markdown；链接末尾继续输入退出链接格式，自动转换可用
   Cmd/Ctrl+Z 或退格恢复原始输入。`link-editor.ts` 复用 modal-paper 提供 Cmd+K（macOS）/
   Ctrl+K（Windows）的双输入框面板，文字与有效地址修改后自动保存；点击面板外、Escape
   或 Enter 关闭，未完成的无效地址不保存。修改目标覆盖整个链接的不同格式片段并保留格式。普通点击放置光标，Cmd/Ctrl+点击通过原生边界打开

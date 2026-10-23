@@ -705,17 +705,39 @@ export const tableToolsPlugin = $prose(() => new Plugin({
       };
       toolbar.append(button);
     }
-    view.dom.parentElement?.append(toolbar);
+    const host = view.dom.parentElement;
+    host?.append(toolbar);
     const update = () => {
-      let inTable = false;
-      for (let depth = view.state.selection.$from.depth; depth > 0; depth -= 1) {
-        const name = view.state.selection.$from.node(depth).type.name;
-        if (name === "table_cell" || name === "table_header") { inTable = true; break; }
+      let table: HTMLElement | null = null;
+      const { $from } = view.state.selection;
+      for (let depth = $from.depth; depth > 0; depth -= 1) {
+        if ($from.node(depth).type.name !== "table") continue;
+        const dom = view.nodeDOM($from.before(depth));
+        if (dom instanceof HTMLElement) table = dom.matches("table") ? dom : dom.querySelector("table");
+        break;
       }
-      toolbar.hidden = !inTable || !view.editable;
+      toolbar.hidden = !table || !view.editable;
+      if (!table || !host || toolbar.hidden) return;
+      const bounds = table.getBoundingClientRect();
+      const origin = host.getBoundingClientRect();
+      toolbar.style.left = `${bounds.left - origin.left + host.scrollLeft - host.clientLeft}px`;
+      toolbar.style.top = `${bounds.bottom - origin.top + host.scrollTop - host.clientTop + 4}px`;
     };
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(update);
+    observer?.observe(view.dom);
+    window.addEventListener("resize", update);
+    // Capture scroll events from nested editor scrollports as well as the page.
+    document.addEventListener("scroll", update, true);
     update();
-    return { update, destroy: () => toolbar.remove() };
+    return {
+      update,
+      destroy: () => {
+        observer?.disconnect();
+        window.removeEventListener("resize", update);
+        document.removeEventListener("scroll", update, true);
+        toolbar.remove();
+      },
+    };
   },
 }));
 

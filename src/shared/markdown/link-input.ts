@@ -113,6 +113,7 @@ export const bareLinkInputRule = $inputRule(() => new InputRule(
 
 export const linkPastePlugin = $prose((ctx) => {
   let plainPaste = false;
+  let markdownSlice: Slice | null = null;
   return new Plugin({
     key: literalLinks,
     state: {
@@ -128,10 +129,12 @@ export const linkPastePlugin = $prose((ctx) => {
     props: {
       transformPastedText(text, plain) {
         plainPaste = plain;
+        markdownSlice = null;
         return text;
       },
       transformPastedHTML(html) {
         plainPaste = false;
+        markdownSlice = null;
         return html;
       },
       clipboardTextParser(text, context, plain, view) {
@@ -143,10 +146,32 @@ export const linkPastePlugin = $prose((ctx) => {
         if (href) {
           return new Slice(Fragment.from(view.state.schema.text(text.trim(), [view.state.schema.marks.link.create({ href })])), 0, 0);
         }
-        // Parse a complete inline Markdown link, leaving unrelated plain-text
-        // paste semantics (including multiline text) unchanged.
-        const paragraph = linkedParagraph(ctx.get(parserCtx)(text.trim()));
-        return paragraph ? new Slice(paragraph.content, 0, 0) : literal();
+        // Use the same Markdown dialect as document loading. Open edges allow
+        // inline content to merge into the current paragraph while retaining
+        // block structure such as tables, lists and fenced code.
+        const doc = ctx.get(parserCtx)(text);
+        if (!doc) return literal();
+        if (doc.childCount === 1 && doc.firstChild?.type.name === "paragraph" && !/[\r\n]/.test(text)) {
+          // Markdown parsers discard boundary spaces; inline paste must retain
+          // them so adjacent words do not run together.
+          const leading = /^ +/.exec(text)?.[0] ?? "";
+          const trailing = / +$/.exec(text)?.[0] ?? "";
+          let content = doc.firstChild.content;
+          if (leading) content = Fragment.from(view.state.schema.text(leading)).append(content);
+          if (trailing && text.trim()) content = content.append(Fragment.from(view.state.schema.text(trailing)));
+          return new Slice(content, 0, 0);
+        }
+        markdownSlice = new Slice(doc.content,
+          doc.firstChild?.type.name === "paragraph" ? 1 : 0,
+          doc.lastChild?.type.name === "paragraph" ? 1 : 0);
+        return markdownSlice;
+      },
+      transformPasted(slice) {
+        // ProseMirror opens external clipboard slices after parsing. Restore
+        // Markdown block boundaries so a leading heading stays a heading.
+        const result = markdownSlice ?? slice;
+        markdownSlice = null;
+        return result;
       },
       handlePaste(view, event, slice) {
         const plain = plainPaste;
