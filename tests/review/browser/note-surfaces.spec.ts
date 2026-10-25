@@ -342,3 +342,35 @@ describe("note editor surface browser review", () => {
   });
 
 });
+
+describe("empty line selection", () => {
+  it("paints a narrow selection at the start of an empty line without a floating toolbar", async () => {
+    await browser.url(`${REVIEW_URL}?selection`);
+    await browser.setWindowSize(1000, 700);
+    await browser.waitUntil(() => browser.execute(() => document.body.dataset.reviewReady === "true"));
+    await browser.execute(() => {
+      const editor = document.querySelector<HTMLElement>("#piece-host .editor")!;
+      editor.focus();
+      const range = document.createRange();
+      range.setStart(editor.querySelector("strong")!.firstChild!, 0);
+      range.setEnd(editor.querySelector(":scope > p:last-child")!.firstChild!, 5);
+      const selection = window.getSelection()!;
+      selection.removeAllRanges();
+      selection.addRange(range);
+      document.dispatchEvent(new Event("selectionchange"));
+    });
+    await $("#piece-host .fn-empty-line-selected").waitForExist();
+    const highlight = await browser.execute(() => {
+      const line = document.querySelector("#piece-host .fn-empty-line-selected")!;
+      const style = getComputedStyle(line, "::after");
+      return { width: parseFloat(style.width), height: parseFloat(style.height), text: line.textContent };
+    });
+    assert.ok(highlight.width > 0 && highlight.width < 12);
+    assert.ok(highlight.height > 12);
+    assert.equal(highlight.text, "");
+    assert.equal(await $('[aria-label="选区操作"]').isExisting(), false);
+    await browser.saveScreenshot(join(tmpdir(), "floatnote-empty-line-selection.png"));
+    await browser.keys("\uE014");
+    await $("#piece-host .fn-empty-line-selected").waitForExist({ reverse: true });
+  });
+});

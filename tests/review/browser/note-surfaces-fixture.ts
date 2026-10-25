@@ -7,7 +7,9 @@ const inboxHost = document.querySelector<HTMLElement>("#inbox-host");
 const pieceHost = document.querySelector<HTMLElement>("#piece-host");
 if (!inboxHost || !pieceHost) throw new Error("note surface fixture hosts are missing");
 const fixtureParams = new URLSearchParams(window.location.search);
-const markdown = fixtureParams.has("long")
+const markdown = fixtureParams.has("selection")
+  ? "**bold** plain\n\n> quoted\n\n```ts\nconst value = 1;\n```\n\n| A | B |\n| --- | --- |\n| one | two |\n\nafter"
+  : fixtureParams.has("long")
   ? Array.from({ length: 80 }, (_, index) => `第 ${index + 1} 段正文`).join("\n\n")
   : fixtureParams.has("image")
     ? "![宽图片](/assets/01-hero.png)"
@@ -50,5 +52,11 @@ const [inbox, piece] = await Promise.all([
 // The fixture must exercise that lifecycle or it will miss root replacement.
 inbox.load(markdown);
 piece.load(markdown);
+
+if (fixtureParams.has("selection")) {
+  for (const editor of [inbox, piece]) editor.withView((view) => {
+    view.dispatch(view.state.tr.insert(view.state.doc.firstChild!.nodeSize, view.state.schema.nodes.paragraph.create()));
+  });
+}
 
 document.body.dataset.reviewReady = "true";

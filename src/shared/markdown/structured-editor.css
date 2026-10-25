@@ -813,3 +813,21 @@
   min-height: 100%;
   padding: clamp(56px, 8vh, 80px) clamp(28px, 7vw, 80px) clamp(88px, 12vh, 120px);
 }
+
+.fn-structured-editor .selectedCell { background: color-mix(in srgb, var(--color-accent) 16%, transparent); }
+.fn-structured-editor .fn-range-selected { background: color-mix(in srgb, var(--color-accent) 14%, transparent); }
+
+/* Paint a selected empty text line without inserting content or changing layout. */
+.fn-structured-editor .fn-empty-line-selected {
+  position: relative;
+}
+.fn-structured-editor .fn-empty-line-selected::after {
+  content: "";
+  position: absolute;
+  inset-inline-start: 0;
+  top: 0;
+  width: 0.45em;
+  height: 1lh;
+  background: Highlight;
+  pointer-events: none;
+}

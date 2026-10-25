@@ -90,3 +90,9 @@ codec、文本区间变换、Markdown 语义上下文、精确文本匹配和标
 `src/platform/updates.ts` 集中定义更新 DTO、命令和 `update-request` / `update-status` 事件。`src/shared/updates/controller.ts` 由持久主窗口唯一实例化，设置页通过事件请求检查/安装和获取状态；设置页本身不持有更新包。`src/note/updates.ts` 连接主窗口保存屏障及后台检查，`notes-state.saveBeforeUpdate` 在队列未持久化时拒绝安装。`src/settings/updates.ts` 复用共享安全 Markdown renderer 展示远端更新说明，以局部紧凑样式限制滚动区域；链接通过平台打开接口处理，仅说明内容变化时重新渲染。
 
 首次启动时，配置读取通过 `src/platform/startup.ts` 等待 AppState 注册（仅对 state not managed 错误重试，最多 15 秒）。主窗口启动失败显示可重试空态，采集检测失败不显示未经确认的 macOS 权限说明。Windows 不需要辅助功能授权，但监听失败仍显示重试入口。正式版 working_dir 初始为空，创建第一个项目时用户选择父目录，在其下创建「未命名项目」，并记住该父目录；取消选择不会创建项目。debug profile 使用隔离 workspace。
+
+### Markdown 选区交互
+
+编辑器沿用原有格式快捷键，不提供划选浮动工具栏。`selectionFeedbackPlugin` 根据当前选区为完全选中的空文本段落在行首绘制一小段系统选中色背景；不插入占位字符、不改变 Markdown 和布局，选区收起时自动消失。跨越完整代码块或原子节点时保留选中背景。
+
+`shared/markdown/selection-state.ts` 仅提供表格范围和标注能力检查：表格增删工具仅在完整选区处于同一表格时显示；Inbox 标注按独立 ranges 应用，避免修改矩形单元格选区之外的内容，代码和空白选区给出不可用说明。CodeMirror 将文本与选区同步到外层 ProseMirror，共用撤销历史，边界方向键可返回正文，Shift+方向键可扩展到块外。

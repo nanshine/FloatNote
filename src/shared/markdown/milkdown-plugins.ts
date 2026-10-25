@@ -1,16 +1,18 @@
+import { selectionTable } from "./selection-state";
 import katex from "katex";
 import remarkMath from "remark-math";
 import type { MilkdownPlugin } from "@milkdown/kit/ctx";
 import { InputRule, wrappingInputRule } from "@milkdown/kit/prose/inputrules";
 import type { NodeViewConstructor } from "@milkdown/kit/prose/view";
+import { undo, redo } from "@milkdown/kit/prose/history";
 import { Fragment } from "@milkdown/kit/prose/model";
 import { Decoration, DecorationSet } from "@milkdown/kit/prose/view";
-import { NodeSelection, Plugin, PluginKey, TextSelection } from "@milkdown/kit/prose/state";
+import { NodeSelection, Plugin, PluginKey, Selection, TextSelection } from "@milkdown/kit/prose/state";
 import type { EditorView } from "@milkdown/kit/prose/view";
 import { blockquoteSchema, codeBlockSchema, hrSchema, imageSchema, linkSchema, listItemSchema } from "@milkdown/kit/preset/commonmark";
 import { Compartment, EditorState as CodeState } from "@codemirror/state";
 import { EditorView as CodeView, keymap as codeKeymap } from "@codemirror/view";
-import { defaultKeymap, history as codeHistory, historyKeymap } from "@codemirror/commands";
+import { defaultKeymap } from "@codemirror/commands";
 import { LanguageDescription, syntaxHighlighting } from "@codemirror/language";
 import { addColumnAfter, addRowAfter, deleteColumn, deleteRow } from "@milkdown/kit/prose/tables";
 import { $ctx, $inputRule, $markSchema, $nodeSchema, $prose, $remark, $view } from "@milkdown/kit/utils";
@@ -683,6 +685,28 @@ export const quoteCardPlugin = $prose((ctx) => new Plugin({
   },
 }));
 
+export const selectionFeedbackPlugin = $prose(() => new Plugin({
+  props: {
+    decorations(state) {
+      if (state.selection.empty || state.selection instanceof NodeSelection) return null;
+      const decorations: Decoration[] = [];
+      state.doc.nodesBetween(state.selection.from, state.selection.to, (node, pos) => {
+        // Crossing an empty paragraph selects its line break; merely ending
+        // at its text position does not select that line.
+        if (node.isTextblock && !node.type.spec.code && node.content.size === 0
+          && state.selection.from <= pos + 1 && state.selection.to > pos + 1) {
+          decorations.push(Decoration.node(pos, pos + node.nodeSize, { class: "fn-empty-line-selected" }));
+        }
+        if ((node.type.spec.code || (node.isAtom && !node.isText))
+          && state.selection.from <= pos && state.selection.to >= pos + node.nodeSize) {
+          decorations.push(Decoration.node(pos, pos + node.nodeSize, { class: "fn-range-selected" }));
+        }
+      });
+      return DecorationSet.create(state.doc, decorations);
+    },
+  },
+}));
+
 export const tableToolsPlugin = $prose(() => new Plugin({
   view(view) {
     const toolbar = document.createElement("div");
@@ -709,12 +733,13 @@ export const tableToolsPlugin = $prose(() => new Plugin({
     host?.append(toolbar);
     const update = () => {
       let table: HTMLElement | null = null;
-      const { $from } = view.state.selection;
-      for (let depth = $from.depth; depth > 0; depth -= 1) {
-        if ($from.node(depth).type.name !== "table") continue;
-        const dom = view.nodeDOM($from.before(depth));
+      const tablePosition = selectionTable(view.state);
+      if (tablePosition !== null) {
+        const dom = view.nodeDOM(tablePosition);
         if (dom instanceof HTMLElement) table = dom.matches("table") ? dom : dom.querySelector("table");
-        break;
+      }
+      for (const [index, [, command]] of actions.entries()) {
+        (toolbar.children[index] as HTMLButtonElement).disabled = !view.editable || !command(view.state);
       }
       toolbar.hidden = !table || !view.editable;
       if (!table || !host || toolbar.hidden) return;
@@ -861,10 +886,30 @@ export const codeBlockView = $view(codeBlockSchema.node, (): NodeViewConstructor
       state: CodeState.create({
         doc: node.textContent,
         extensions: [
-          codeHistory(),
           syntaxHighlighting(floatnoteCodeHighlight),
           languageSlot.of([]),
-          codeKeymap.of([...defaultKeymap, ...historyKeymap]),
+          codeKeymap.of([
+            { key: "Mod-z", run: () => undo(outerView.state, outerView.dispatch) },
+            { key: "Mod-Shift-z", run: () => redo(outerView.state, outerView.dispatch) },
+            { key: "Mod-y", run: () => redo(outerView.state, outerView.dispatch) },
+            ...["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].flatMap((key) => [false, true].map((shift) => ({
+              key: `${shift ? "Shift-" : ""}${key}`,
+              run: () => {
+                const main = code.state.selection.main;
+                const backward = key === "ArrowLeft" || key === "ArrowUp";
+                const edge = backward ? 0 : code.state.doc.length;
+                if (main.head !== edge || (!shift && !main.empty)) return false;
+                const pos = getPos();
+                if (pos === undefined) return false;
+                const target = Selection.near(outerView.state.doc.resolve(backward ? pos : pos + node.nodeSize), backward ? -1 : 1);
+                const selection = shift ? TextSelection.create(outerView.state.doc, pos + 1 + main.anchor, target.head) : target;
+                outerView.dispatch(outerView.state.tr.setSelection(selection).scrollIntoView());
+                outerView.focus();
+                return true;
+              },
+            }))),
+            ...defaultKeymap,
+          ]),
           CodeView.lineWrapping,
           CodeView.theme({
             "&": { background: "transparent" },
@@ -874,12 +919,22 @@ export const codeBlockView = $view(codeBlockSchema.node, (): NodeViewConstructor
             "&.cm-focused": { outline: "none" },
           }),
           CodeView.updateListener.of((update) => {
-            if (!update.docChanged || updating || !outerView.editable) return;
+            if (updating || !outerView.editable || !update.view.hasFocus) return;
             const pos = getPos();
             if (pos === undefined) return;
-            const text = update.state.doc.toString();
-            const replacement = node.type.create(node.attrs, text ? outerView.state.schema.text(text) : undefined);
-            outerView.dispatch(outerView.state.tr.replaceWith(pos, pos + node.nodeSize, replacement));
+            const main = update.state.selection.main;
+            const anchor = pos + 1 + main.anchor;
+            const head = pos + 1 + main.head;
+            if (!update.docChanged && outerView.state.selection.anchor === anchor && outerView.state.selection.head === head) return;
+            const tr = outerView.state.tr;
+            let offset = pos + 1;
+            update.changes.iterChanges((from, to, newFrom, newTo, text) => {
+              tr.insertText(text.toString(), offset + from, offset + to);
+              offset += (newTo - newFrom) - (to - from);
+            });
+            tr.setSelection(TextSelection.create(tr.doc, anchor, head));
+            updating = true;
+            try { outerView.dispatch(tr); } finally { updating = false; }
           }),
         ],
       }),
@@ -914,6 +969,14 @@ export const codeBlockView = $view(codeBlockSchema.node, (): NodeViewConstructor
           updating = false;
         }
         return true;
+      },
+      setSelection(anchor, head) {
+        if (updating) return;
+        updating = true;
+        try {
+          code.dispatch({ selection: { anchor, head } });
+          code.focus();
+        } finally { updating = false; }
       },
       selectNode: () => dom.classList.add("is-block-selected"),
       deselectNode: () => dom.classList.remove("is-block-selected"),
@@ -1090,6 +1153,7 @@ export const floatnoteMarkdownPlugins = [
   listFoldPlugin,
   quoteCardPlugin,
   tableToolsPlugin,
+  selectionFeedbackPlugin,
   listItemFoldView,
   codeBlockView,
   imageView,

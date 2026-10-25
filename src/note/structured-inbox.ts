@@ -10,6 +10,7 @@ import {
 import type { MarkType, Node as ProseNode } from "@milkdown/kit/prose/model";
 import type { EditorView } from "@milkdown/kit/prose/view";
 import { createStructuredMarkdownEditor, type StructuredMarkdownEditor } from "../shared/markdown/structured-editor";
+import { canAnnotateSelection, selectionTextRuns } from "../shared/markdown/selection-state";
 import { createMenu } from "../shared/ui/menu";
 import { showToast } from "../shared/toast";
 import { isImeComposing } from "../shared/keyboard";
@@ -129,7 +130,7 @@ function reconcileTagDefinitions(tags: TagDef[], markedTags: TagDef[]): TagDef[]
 }
 
 function annotationMarksAtSelection(view: EditorView, annotationType: MarkType) {
-  const { from, to, empty, $from } = view.state.selection;
+  const { empty, $from } = view.state.selection;
   const marks = new Map<string, ReturnType<MarkType["create"]>>();
   const collect = (node: ProseNode) => {
     if (!node.isText) return;
@@ -148,7 +149,7 @@ function annotationMarksAtSelection(view: EditorView, annotationType: MarkType) 
     if ($from.nodeAfter) collect($from.nodeAfter);
     if ($from.nodeBefore) collect($from.nodeBefore);
   } else {
-    view.state.doc.nodesBetween(from, to, collect);
+    for (const { node } of selectionTextRuns(view.state)) collect(node);
   }
   return [...marks.values()];
 }
@@ -247,11 +248,11 @@ export async function createStructuredInbox(options: {
 
   function newTagLauncher(
     view: EditorView,
-    from: number,
-    to: number,
+    ranges: { from: number; to: number }[],
     annotationType: MarkType,
     close: () => void,
   ): HTMLElement {
+    const documentSnapshot = view.state.doc;
     const launch = document.createElement("button");
     launch.type = "button";
     launch.className = "fn-menu__item";
@@ -283,13 +284,15 @@ export async function createStructuredInbox(options: {
         swatches.append(button);
       }
       const commit = () => {
+        if (!view.editable || view.state.doc !== documentSnapshot) { close(); return; }
         const name = input.value.trim();
         if (!name) return void input.focus();
         const id = tagId(name, metadata.tags.map((tag) => tag.id));
         metadata = { ...metadata, tags: [...metadata.tags, { id, name, color: selected }] };
-        view.dispatch(view.state.tr.addMark(from, to, annotationType.create({
-          id: annotationId(), tagId: id, color: selected, name,
-        })));
+        const mark = annotationType.create({ id: annotationId(), tagId: id, color: selected, name });
+        const tr = view.state.tr;
+        for (const { from, to } of ranges) tr.addMark(from, to, mark);
+        view.dispatch(tr);
         persistSnapshot();
         close();
       };
@@ -400,13 +403,17 @@ export async function createStructuredInbox(options: {
 
   editor.contentDOM.addEventListener("contextmenu", (event) => {
     editor.withView((view) => {
-      const { from, to, empty } = view.state.selection;
+      if (!view.editable) return;
+      const { empty } = view.state.selection;
       const annotationType = view.state.schema.marks.floatnote_annotation;
       if (!annotationType) return;
       const menu = createMenu();
       const close = () => menu.hide();
       const items: HTMLElement[] = [];
-      if (!empty) {
+      const canAnnotate = canAnnotateSelection(view.state, annotationType);
+      const ranges = selectionTextRuns(view.state);
+      const documentSnapshot = view.state.doc;
+      if (canAnnotate) {
         for (const tag of metadata.tags) {
           const button = document.createElement("button");
           button.type = "button";
@@ -419,14 +426,25 @@ export async function createStructuredInbox(options: {
           label.textContent = tag.name;
           button.append(dot, label);
           button.onclick = () => {
-            view.dispatch(view.state.tr.addMark(from, to, annotationType.create({
-              id: annotationId(), tagId: tag.id, color: tag.color, name: tag.name,
-            })));
+            if (!view.editable || view.state.doc !== documentSnapshot) { close(); return; }
+            const mark = annotationType.create({ id: annotationId(), tagId: tag.id, color: tag.color, name: tag.name });
+            const tr = view.state.tr;
+            for (const { from, to } of ranges) tr.addMark(from, to, mark);
+            view.dispatch(tr);
             close();
           };
           items.push(button);
         }
-        items.push(newTagLauncher(view, from, to, annotationType, close));
+        items.push(newTagLauncher(view, ranges, annotationType, close));
+      }
+      if (!empty && !canAnnotate) {
+        const unavailable = document.createElement("button");
+        unavailable.type = "button";
+        unavailable.className = "fn-menu__item";
+        unavailable.disabled = true;
+        unavailable.textContent = ranges.some(({ from, to }) => view.state.doc.textBetween(from, to).trim())
+          ? "此选区包含无法标注的内容" : "请选择要标注的文字";
+        items.push(unavailable);
       }
       const selectedAnnotations = annotationMarksAtSelection(view, annotationType);
       for (const annotation of selectedAnnotations) {

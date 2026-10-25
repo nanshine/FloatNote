@@ -146,6 +146,23 @@ describe("structured inbox annotation bridge", () => {
     expect(saves.at(-1)).toContain("floatnote:ann:v2");
   });
 
+  it("explains why a mixed code selection cannot be annotated instead of applying partially", async () => {
+    const parent = document.createElement("div");
+    const projectionRoot = document.createElement("div");
+    document.body.append(parent, projectionRoot);
+    const inbox = await createStructuredInbox({ parent, projectionRoot, onSave: () => undefined });
+    editor = inbox.editor;
+    inbox.load("before\n\n```js\ncode\n```\n\nafter", {
+      tags: [{ id: "focus", name: "重点", color: "#f00" }], annotations: [], quoteSources: [],
+    });
+    editor.setSelection(1, editor.withView((view) => view.state.doc.content.size - 1));
+    editor.contentDOM.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true }));
+    expect(document.querySelector(".annotation-menu-tag")).toBeNull();
+    const disabled = document.querySelector<HTMLButtonElement>(".fn-menu__item:disabled");
+    expect(disabled?.textContent).toContain("无法标注");
+    expect(inbox.metadata().annotations).toEqual([]);
+  });
+
   it("shows each existing tag color in the selection menu", async () => {
     const parent = document.createElement("div");
     const projectionRoot = document.createElement("div");
