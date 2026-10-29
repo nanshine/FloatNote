@@ -118,7 +118,7 @@
 - **Windows x86_64**：[直接下载最新版安装包](https://github.com/nanshine/FloatNote/releases/latest/download/FloatNote_x86_64-setup.exe)
 - **所有版本与更新说明**：[查看 GitHub Releases](https://github.com/nanshine/FloatNote/releases)
 
-macOS 安装包已完成 Developer ID 签名与 Apple 公证。Windows 安装包支持应用内更新验签，但尚未配置 Authenticode，首次安装时 Windows 可能显示未知发布者或 SmartScreen 提示。
+macOS 安装包已完成 Developer ID 签名与 Apple 公证。Windows 安装包支持应用内更新验签；SignPath Authenticode 流程已准备，须通过开源项目审核并完成新版本签名后才会生效，现有版本仍可能显示未知发布者或 SmartScreen 提示。详见 [Code signing policy](CODE_SIGNING.md)。
 
 安装后打开浮记，跟随新手引导创建第一个项目，试着采集一段文字，再写下自己的想法。你可以随时关闭引导，之后在「设置 → 通用 → 新手引导」重新开始。
 
