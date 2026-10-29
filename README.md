@@ -7,11 +7,11 @@
 </div>
 
 <p align="center">
-  <img src="assets/01-hero.png" alt="FloatNote 悬浮笔记窗口展示" width="80%">
+  <img src="assets/01-hero.png" alt="浮记 悬浮笔记窗口展示" width="80%">
 </p>
 
 <div align="center">
-  <p>一款悬浮在桌面上、帮助你从阅读到写作的本地笔记工具。</p>
+  <p>浮记（FloatNote）是一款悬浮在桌面上、帮助你从阅读到写作的本地笔记工具。</p>
   <p>
     <a href="https://github.com/nanshine/FloatNote/releases/latest/download/FloatNote_aarch64.dmg"><strong>下载 macOS · Apple Silicon</strong></a>
     &nbsp;·&nbsp;
@@ -22,7 +22,7 @@
   <p><a href="https://github.com/nanshine/FloatNote/releases/latest">查看最新正式版本与更新说明</a></p>
 </div>
 
-## 为什么是 FloatNote？
+## 为什么是浮记？
 
 1. 笔记窗口始终悬浮，随时记录，不打断当前工作
 2. 一次只打开一个项目，把注意力留给眼前的内容
@@ -39,7 +39,7 @@
 <p>置顶的笔记窗始终在手边，无需离开正在使用的应用。划选内容后，可以快速采集、翻译，或带着原文向 AI 提问。</p>
 </td>
 <td width="58%" align="center" valign="middle">
-<video src="https://github.com/user-attachments/assets/285785c3-c792-4485-b122-fd0899244412" controls muted playsinline preload="metadata" poster="assets/posters/02-capture.jpg" width="100%" aria-label="FloatNote 悬浮捕捉、翻译与提问功能演示"></video>
+<video src="https://github.com/user-attachments/assets/285785c3-c792-4485-b122-fd0899244412" controls muted playsinline preload="metadata" poster="assets/posters/02-capture.jpg" width="100%" aria-label="浮记 悬浮捕捉、翻译与提问功能演示"></video>
 </td>
 </tr>
 </table>
@@ -47,7 +47,7 @@
 <table>
 <tr>
 <td width="58%" align="center" valign="middle">
-<video src="https://github.com/user-attachments/assets/d316515a-72b4-48e7-87dd-8f72f870322c" controls muted playsinline preload="metadata" poster="assets/posters/03-dual-panel.jpg" width="100%" aria-label="FloatNote 采集区与写作区双栏工作区演示"></video>
+<video src="https://github.com/user-attachments/assets/d316515a-72b4-48e7-87dd-8f72f870322c" controls muted playsinline preload="metadata" poster="assets/posters/03-dual-panel.jpg" width="100%" aria-label="浮记 采集区与写作区双栏工作区演示"></video>
 </td>
 <td width="42%" valign="middle">
 <h3>边看材料，边写观点</h3>
@@ -60,10 +60,10 @@
 <tr>
 <td width="42%" valign="middle">
 <h3>用追问帮助你想清楚</h3>
-<p>FloatNote 的 AI 不只给出答案，也会通过追问、梳理、规划和共同写作，帮助你形成自己的判断。</p>
+<p>浮记的 AI 不只给出答案，也会通过追问、梳理、规划和共同写作，帮助你形成自己的判断。</p>
 </td>
 <td width="58%" align="center" valign="middle">
-<video src="https://github.com/user-attachments/assets/a6f85cf4-7eec-4f66-ac57-c31e33ce541b" controls muted playsinline preload="metadata" poster="assets/posters/04-socratic-ai.jpg" width="100%" aria-label="FloatNote AI 追问与变更确认功能演示"></video>
+<video src="https://github.com/user-attachments/assets/a6f85cf4-7eec-4f66-ac57-c31e33ce541b" controls muted playsinline preload="metadata" poster="assets/posters/04-socratic-ai.jpg" width="100%" aria-label="浮记 AI 追问与变更确认功能演示"></video>
 </td>
 </tr>
 </table>
@@ -79,10 +79,10 @@
 <table>
 <tr>
 <td width="58%" align="center" valign="middle">
-<video src="https://github.com/user-attachments/assets/9297a1c1-1687-4aad-a3d8-3af3050aeff9" controls muted playsinline preload="metadata" poster="assets/posters/05-local-files.jpg" width="100%" aria-label="FloatNote 本地 Markdown 文件与项目空间演示"></video>
+<video src="https://github.com/user-attachments/assets/9297a1c1-1687-4aad-a3d8-3af3050aeff9" controls muted playsinline preload="metadata" poster="assets/posters/05-local-files.jpg" width="100%" aria-label="浮记 本地 Markdown 文件与项目空间演示"></video>
 </td>
 <td width="42%" valign="middle">
-<p>笔记、行动清单和文章直接保存在你选择的本地文件夹中，并使用 Markdown 格式。你可以用熟悉的文件工具查看、备份和迁移，不依赖 FloatNote 才能访问自己的内容。</p>
+<p>笔记、行动清单和文章直接保存在你选择的本地文件夹中，并使用 Markdown 格式。你可以用熟悉的文件工具查看、备份和迁移，不依赖浮记才能访问自己的内容。</p>
 </td>
 </tr>
 </table>
@@ -92,17 +92,17 @@
 <table>
 <tr>
 <td width="33%" align="center" valign="top">
-<video src="https://github.com/user-attachments/assets/a2823cd5-0fbf-4358-9153-1ceee3ee8387" controls muted playsinline preload="metadata" poster="assets/posters/06-tags.jpg" width="100%" aria-label="FloatNote 标签功能演示"></video>
+<video src="https://github.com/user-attachments/assets/a2823cd5-0fbf-4358-9153-1ceee3ee8387" controls muted playsinline preload="metadata" poster="assets/posters/06-tags.jpg" width="100%" aria-label="浮记 标签功能演示"></video>
 <h3>标签</h3>
 <p>为重要片段添加标签，方便整理和查找零散内容。</p>
 </td>
 <td width="33%" align="center" valign="top">
-<video src="https://github.com/user-attachments/assets/a1aea003-0afa-4770-909c-dad44068dc85" controls muted playsinline preload="metadata" poster="assets/posters/07-action-menu.jpg" width="100%" aria-label="FloatNote 行动菜单与下一步行动功能演示"></video>
+<video src="https://github.com/user-attachments/assets/a1aea003-0afa-4770-909c-dad44068dc85" controls muted playsinline preload="metadata" poster="assets/posters/07-action-menu.jpg" width="100%" aria-label="浮记 行动菜单与下一步行动功能演示"></video>
 <h3>下一步行动</h3>
 <p>通过行动菜单明确接下来可以执行的事情。</p>
 </td>
 <td width="33%" align="center" valign="top">
-<video src="https://github.com/user-attachments/assets/b6ff4ac7-7e67-4a18-8c58-db65b2c8e00b" controls muted playsinline preload="metadata" poster="assets/posters/08-versions.jpg" width="100%" aria-label="FloatNote 文章版本管理功能演示"></video>
+<video src="https://github.com/user-attachments/assets/b6ff4ac7-7e67-4a18-8c58-db65b2c8e00b" controls muted playsinline preload="metadata" poster="assets/posters/08-versions.jpg" width="100%" aria-label="浮记 文章版本管理功能演示"></video>
 <h3>版本管理</h3>
 <p>保存并回看文章的不同版本，了解内容是怎样一步步形成的。</p>
 </td>
@@ -120,7 +120,7 @@
 
 macOS 安装包已完成 Developer ID 签名与 Apple 公证。Windows 安装包支持应用内更新验签，但尚未配置 Authenticode，首次安装时 Windows 可能显示未知发布者或 SmartScreen 提示。
 
-安装后打开 FloatNote，跟随新手引导创建第一个项目，试着采集一段文字，再写下自己的想法。你可以随时关闭引导，之后在「设置 → 通用 → 新手引导」重新开始。
+安装后打开浮记，跟随新手引导创建第一个项目，试着采集一段文字，再写下自己的想法。你可以随时关闭引导，之后在「设置 → 通用 → 新手引导」重新开始。
 
 在 Mac 上使用划词采集时，请按应用提示开启辅助功能权限；想使用 AI 助手时，再到「设置 → AI」配置服务提供商即可。
 
