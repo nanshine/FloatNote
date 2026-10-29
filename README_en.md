@@ -3,7 +3,7 @@
 </p>
 
 <div align="center">
-  <img src="assets/readme-brand-en.png" alt="FloatNote · Let thoughts take shape." width="560">
+  <img src="assets/readme-brand-en-compact.png" alt="FloatNote · Let thoughts take shape." width="360">
 </div>
 
 <p align="center">

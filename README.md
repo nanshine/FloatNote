@@ -3,7 +3,7 @@
 </p>
 
 <div align="center">
-  <img src="assets/readme-brand-zh.png" alt="浮记 · 浮生几记" width="560">
+  <img src="assets/readme-brand-zh-compact.png" alt="浮记 · 浮生几记" width="250">
 </div>
 
 <p align="center">
