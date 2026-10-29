@@ -1,5 +1,9 @@
+<p align="center">
+  <strong>简体中文</strong> | <a href="README_en.md">English</a>
+</p>
+
 <div align="center">
-  <h1><img src="assets/readme-icon.png" alt="FloatNote 应用图标" width="44" height="44" style="vertical-align: middle;">&nbsp;FloatNote</h1>
+  <img src="assets/readme-brand-zh.png" alt="浮记 · 浮生几记" width="560">
 </div>
 
 <p align="center">
